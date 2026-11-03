@@ -125,6 +125,9 @@ function setupEventListeners() {
   document.getElementById('listSearch').addEventListener('input', (e) => {
     if (listView) listView.setSearch(e.target.value);
   });
+  document.getElementById('globalSearch').addEventListener('input', (e) => {
+    if (listView) listView.setGlobalSearch(e.target.value);
+  });
   document.getElementById('listPageSize').addEventListener('change', (e) => {
     if (listView) listView.setPageSize(e.target.value);
   });
@@ -262,12 +265,26 @@ async function applyFilters() {
 
   // Collect filter criteria
   const categories = Array.from(document.querySelectorAll('.cat-filter:checked')).map(cb => cb.value);
-  const sizeValue = parseInt(document.getElementById('sizeFilter').value) || 0;
+  const sizeValue = document.getElementById('sizeFilter').value;
   const ageValue = document.getElementById('ageFilter').value;
 
   currentFilter = {};
   if (categories.length > 0) currentFilter.categories = categories;
-  if (sizeValue > 0) currentFilter.minSize = sizeValue;
+
+  // Handle size filter
+  if (sizeValue === 'empty') {
+    currentFilter.sizeMode = 'empty';
+  } else if (sizeValue === 'small') {
+    currentFilter.maxSize = 1048576;
+  } else if (sizeValue === 'medium') {
+    currentFilter.minSize = 1048576;
+    currentFilter.maxSize = 104857600;
+  } else if (sizeValue === 'large') {
+    currentFilter.minSize = 104857600;
+  } else if (sizeValue !== 'all' && !isNaN(parseInt(sizeValue))) {
+    currentFilter.minSize = parseInt(sizeValue);
+  }
+
   if (ageValue) {
     currentFilter.ageDays = parseInt(ageValue);
     currentFilter.ageMode = 'older';
@@ -293,15 +310,35 @@ function createFilterManager(filters) {
       const filteredChildren = (node.children || [])
         .map(c => this.applyToTree(c))
         .filter(Boolean);
-      if (filteredChildren.length === 0) return null;
+      // Always keep empty directories and locked folders visible
+      const isEmptyDir = (!node.children || node.children.length === 0);
+      const isLocked = node.locked === true;
+      if (filteredChildren.length === 0 && (isEmptyDir || isLocked)) {
+        // Keep if no restrictive filter is active, or if filtering by empty
+        const restrictiveFilter = (filters.sizeMode && filters.sizeMode !== 'empty') ||
+          (filters.minSize && filters.minSize > 0) ||
+          (filters.maxSize !== undefined && filters.maxSize !== Infinity && filters.maxSize < 1) ||
+          (filters.categories && filters.categories.length > 0) ||
+          filters.ageDays;
+        if (!restrictiveFilter || filters.sizeMode === 'empty') {
+          return { ...node, children: [], size: 0, locked: isLocked };
+        }
+        return null;
+      }
       return { ...node, children: filteredChildren, size: filteredChildren.reduce((s, c) => s + (c.size || 0), 0) };
     },
     matches(file) {
       if (filters.categories && filters.categories.length > 0) {
         if (!filters.categories.includes(file.category)) return false;
       }
+      if (filters.sizeMode === 'empty') {
+        if (file.size !== 0) return false;
+      }
       if (filters.minSize) {
         if (file.size < filters.minSize) return false;
+      }
+      if (filters.maxSize !== undefined) {
+        if (file.size > filters.maxSize) return false;
       }
       if (filters.ageDays) {
         const threshold = Date.now() - (filters.ageDays * 24 * 60 * 60 * 1000);

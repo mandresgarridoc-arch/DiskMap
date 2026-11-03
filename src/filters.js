@@ -87,10 +87,13 @@ class FilterManager {
     const filteredChildren = (node.children || [])
       .map(c => this.applyToTree(c))
       .filter(Boolean);
-    if (filteredChildren.length === 0 && node.type === 'directory') {
-      // Keep empty dirs only if they have size? Skip for cleanliness
-      return null;
+    // Keep empty directories and locked folders visible
+    const isEmptyDir = (!node.children || node.children.length === 0);
+    const isLocked = node.locked === true;
+    if (filteredChildren.length === 0 && (isEmptyDir || isLocked)) {
+      return { ...node, children: [], size: 0, locked: isLocked };
     }
+    if (filteredChildren.length === 0) return null;
     return { ...node, children: filteredChildren };
   }
 }

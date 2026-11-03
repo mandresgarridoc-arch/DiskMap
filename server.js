@@ -15,7 +15,7 @@ const { ScanStateSubject } = require('./src/observer');
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ server, maxPayload: 200 * 1024 * 1024 }); // 200MB
 
 const PORT = process.env.PORT || 0; // 0 = auto-assign (HU 4)
 
@@ -193,6 +193,7 @@ app.post('/api/filter', (req, res) => {
 app.get('/api/categories', (req, res) => {
   res.json({ success: true, presets: CATEGORY_PRESETS });
 });
+
 
 // Start server
 server.listen(PORT, '127.0.0.1', () => {

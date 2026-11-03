@@ -60,13 +60,16 @@
             </div>
           </div>
           <div class="filter-group">
-            <label>Tamaño mínimo</label>
+            <label>Tamaño</label>
             <select id="sizeFilter">
-              <option value="0">Todos</option>
+              <option value="all">Todos los tamaños</option>
+              <option value="empty">Solo vacíos (0 bytes)</option>
+              <option value="small">Pequeños (< 1 MB)</option>
+              <option value="medium">Medianos (1 MB - 100 MB)</option>
+              <option value="large">Grandes (> 100 MB)</option>
               <option value="104857600">> 100 MB</option>
               <option value="1073741824">> 1 GB</option>
               <option value="5368709120">> 5 GB</option>
-              <option value="10737418240">> 10 GB</option>
             </select>
           </div>
           <div class="filter-group">
@@ -137,7 +140,8 @@
         <!-- List Visualization -->
         <div id="listContainer" class="list-container" style="display:none;">
           <div class="list-toolbar">
-            <input type="text" id="listSearch" placeholder="🔍 Buscar por nombre..." class="list-search">
+            <input type="text" id="listSearch" placeholder="🔍 Buscar en esta carpeta..." class="list-search">
+            <input type="text" id="globalSearch" placeholder="🌐 Buscar en todo el disco..." class="list-search">
             <select id="listPageSize" class="list-pagesize">
               <option value="50">50 por página</option>
               <option value="100" selected>100 por página</option>

@@ -14,14 +14,15 @@ class ListView {
     this.rootData = null;
     this.currentNode = null;
     this.navStack = [];
-    this.sortBy = 'size';
-    this.sortDir = 'desc';
+    this.sortBy = 'name';
+    this.sortDir = 'asc';
     this.onFileAction = null;
     this.maxSize = 0;
     this.stats = null;
 
     // Search & pagination
     this.searchQuery = '';
+    this.globalSearchQuery = '';
     this.pageSize = 100;
     this.currentPage = 1;
     this.compactMode = false;
@@ -54,10 +55,43 @@ class ListView {
     }));
   }
 
+  _flattenTree(node, result = []) {
+    if (!node) return result;
+    if (node.type === 'file' || node.type === 'directory') {
+      if (node.path && node.name) {
+        result.push({
+          name: node.name,
+          path: node.path,
+          size: node.size || 0,
+          type: node.type,
+          category: node.category,
+          children: node.children,
+          modified: node.modified,
+          locked: node.locked === true
+        });
+      }
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        this._flattenTree(child, result);
+      }
+    }
+    return result;
+  }
+
   _filterItems(items) {
-    if (!this.searchQuery) return items;
-    const q = this.searchQuery.toLowerCase();
-    return items.filter(item => item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q));
+    let filtered = items;
+    // Local search
+    if (this.searchQuery) {
+      const q = this.searchQuery.toLowerCase();
+      filtered = filtered.filter(item => item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q));
+    }
+    // Global search
+    if (this.globalSearchQuery) {
+      const q = this.globalSearchQuery.toLowerCase();
+      filtered = filtered.filter(item => item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q));
+    }
+    return filtered;
   }
 
   _sortItems(items) {
@@ -72,14 +106,25 @@ class ListView {
   }
 
   _renderCurrentNode() {
-    const node = this.currentNode;
-    if (!node) {
+    if (!this.rootData) {
       this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
       this._renderPagination(0);
       return;
     }
 
-    this.allItems = this._getItems(node);
+    // Global search: flatten entire tree
+    if (this.globalSearchQuery) {
+      this.allItems = this._flattenTree(this.rootData);
+    } else {
+      const node = this.currentNode;
+      if (!node) {
+        this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
+        this._renderPagination(0);
+        return;
+      }
+      this.allItems = this._getItems(node);
+    }
+
     this.maxSize = Math.max(...this.allItems.map(i => i.size), 1);
 
     let filtered = this._filterItems(this.allItems);
@@ -100,16 +145,21 @@ class ListView {
       return;
     }
 
-    // Breadcrumb
-    let breadcrumbHtml = '<div class="breadcrumb">';
-    breadcrumbHtml += `<span class="breadcrumb-item" data-level="root">🏠 Raíz</span>`;
-    this.navStack.forEach((entry, idx) => {
-      breadcrumbHtml += `<span class="breadcrumb-sep">›</span>`;
-      breadcrumbHtml += `<span class="breadcrumb-item" data-level="${idx}">${escapeHtml(entry.name)}</span>`;
-    });
-    breadcrumbHtml += '</div>';
+    // Breadcrumb or global search header
+    let headerHtml = '';
+    if (this.globalSearchQuery) {
+      headerHtml = `<div class="breadcrumb"><span style="color:var(--accent);">🌐 Resultados de búsqueda global: "${escapeHtml(this.globalSearchQuery)}"</span> <span style="color:var(--text-secondary); margin-left:8px;">(${filtered.length} resultados)</span></div>`;
+    } else {
+      headerHtml = '<div class="breadcrumb">';
+      headerHtml += `<span class="breadcrumb-item" data-level="root">🏠 Raíz</span>`;
+      this.navStack.forEach((entry, idx) => {
+        headerHtml += `<span class="breadcrumb-sep">›</span>`;
+        headerHtml += `<span class="breadcrumb-item" data-level="${idx}">${escapeHtml(entry.name)}</span>`;
+      });
+      headerHtml += '</div>';
+    }
 
-    let html = breadcrumbHtml;
+    let html = headerHtml;
 
     // Header with sort
     html += `
@@ -215,27 +265,29 @@ class ListView {
       header.style.cursor = 'pointer';
     });
 
-    // Breadcrumb navigation
-    this.container.querySelectorAll('.breadcrumb-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const level = item.dataset.level;
-        if (level === 'root') {
-          this.currentNode = this.rootData;
-          this.navStack = [];
-        } else {
-          const idx = parseInt(level);
-          this.navStack = this.navStack.slice(0, idx + 1);
-          this.currentNode = this.rootData;
-          for (let i = 0; i <= idx; i++) {
-            const targetName = this.navStack[i].name;
-            const found = this.currentNode.children ? this.currentNode.children.find(c => c.name === targetName) : null;
-            if (found) this.currentNode = found;
+    // Breadcrumb navigation (only when not in global search)
+    if (!this.globalSearchQuery) {
+      this.container.querySelectorAll('.breadcrumb-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const level = item.dataset.level;
+          if (level === 'root') {
+            this.currentNode = this.rootData;
+            this.navStack = [];
+          } else {
+            const idx = parseInt(level);
+            this.navStack = this.navStack.slice(0, idx + 1);
+            this.currentNode = this.rootData;
+            for (let i = 0; i <= idx; i++) {
+              const targetName = this.navStack[i].name;
+              const found = this.currentNode.children ? this.currentNode.children.find(c => c.name === targetName) : null;
+              if (found) this.currentNode = found;
+            }
           }
-        }
-        this.currentPage = 1;
-        this._renderCurrentNode();
+          this.currentPage = 1;
+          this._renderCurrentNode();
+        });
       });
-    });
+    }
 
     this._renderPagination(totalPages, totalItems);
   }
@@ -296,6 +348,12 @@ class ListView {
 
   setSearch(query) {
     this.searchQuery = query;
+    this.currentPage = 1;
+    this._renderCurrentNode();
+  }
+
+  setGlobalSearch(query) {
+    this.globalSearchQuery = query;
     this.currentPage = 1;
     this._renderCurrentNode();
   }

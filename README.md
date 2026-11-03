@@ -2,7 +2,7 @@
 # DiskMap - Analizador de Espacio en Disco
 
 Borrador de aplicación para el ramo proyecto para ing. de Software.
-La aplicación DiskLen, deberá permitir organizar el espacio del disco duro de una manera mas interactiva, fácil y rapida.
+La aplicación DiskMap, deberá permitir organizar el espacio del disco duro de una manera mas interactiva, fácil y rapida.
 Nos permite ver el espacio de los discos a través de un treemap, o una lista que muestra el espacio de manera mas interactiva.
 Borrador de proyecto realizado con IA, para fines educativos.
 
@@ -29,7 +29,7 @@ Borrador de proyecto realizado con IA, para fines educativos.
 ## Instalación
 
 ```bash
-cd "DiskLen prueba"
+cd "DiskMap_prueba"
 npm install
 ```
 

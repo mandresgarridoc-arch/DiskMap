@@ -1,5 +1,5 @@
 
-# DiskLen - Analizador de Espacio en Disco
+# DiskMap - Analizador de Espacio en Disco
 
 Borrador de aplicación para el ramo proyecto para ing. de Software.
 La aplicación DiskLen, deberá permitir organizar el espacio del disco duro de una manera mas interactiva, fácil y rapida.

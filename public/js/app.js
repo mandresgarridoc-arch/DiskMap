@@ -7,12 +7,16 @@ let currentTree = null;
 let selectedPath = null;
 let selectedDrive = null;
 let treemap = null;
+let listView = null;
+let currentView = 'treemap';
 let currentFilter = {};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   treemap = new TreemapViz('treemap', 'tooltip');
   treemap.onFileAction = handleFileAction;
+  listView = new ListView('listView');
+  listView.onFileAction = handleFileAction;
 
   initWebSocket();
   loadDrives();
@@ -113,6 +117,10 @@ function setupEventListeners() {
   document.getElementById('btnClearFilter').addEventListener('click', clearFilters);
   document.getElementById('btnTheme').addEventListener('click', toggleTheme);
 
+  // View toggle
+  document.getElementById('btnViewTreemap').addEventListener('click', () => switchView('treemap'));
+  document.getElementById('btnViewList').addEventListener('click', () => switchView('list'));
+
   // Size filter change
   document.getElementById('sizeFilter').addEventListener('change', () => {});
 }
@@ -179,8 +187,7 @@ function handleScanComplete(state) {
     currentTree = state.result;
     renderStats(state.result);
     document.getElementById('statsSection').style.display = 'grid';
-    treemap.render(currentTree);
-    applyFiltersToTree();
+    renderCurrentView();
   }
 }
 
@@ -206,6 +213,7 @@ function resetUI() {
   document.getElementById('statsSection').style.display = 'none';
   document.getElementById('progressSection').style.display = 'none';
   treemap.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la visualización</p></div>';
+  listView.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
   resetScanButtons();
 }
 
@@ -230,6 +238,8 @@ function renderStats(tree) {
   document.getElementById('statSize').textContent = formatBytes(tree.size);
   document.getElementById('statDirs').textContent = dirCount.toLocaleString();
   document.getElementById('statLargest').textContent = largestFile ? largestFile.name : '-';
+  const skipped = (tree._stats && tree._stats.skippedDirs) || 0;
+  document.getElementById('statSkipped').textContent = skipped.toLocaleString();
 }
 
 // Filters
@@ -257,11 +267,7 @@ async function applyFilters() {
 
 function applyFiltersToTree() {
   if (!currentTree) return;
-
-  // Client-side filtering using the same logic
-  const fm = createFilterManager(currentFilter);
-  const filtered = fm.applyToTree(currentTree);
-  treemap.render(filtered || currentTree);
+  renderCurrentView();
 }
 
 function createFilterManager(filters) {
@@ -305,7 +311,42 @@ async function clearFilters() {
   document.getElementById('ageFilter').value = '';
   currentFilter = {};
   if (currentTree) {
-    treemap.render(currentTree);
+    renderCurrentView();
+  }
+}
+
+// View switching
+function switchView(view) {
+  currentView = view;
+  document.getElementById('btnViewTreemap').classList.toggle('active', view === 'treemap');
+  document.getElementById('btnViewList').classList.toggle('active', view === 'list');
+
+  const treemapContainer = document.getElementById('treemapContainer');
+  const listContainer = document.getElementById('listContainer');
+
+  if (view === 'treemap') {
+    treemapContainer.style.display = 'block';
+    listContainer.style.display = 'none';
+  } else {
+    treemapContainer.style.display = 'none';
+    listContainer.style.display = 'flex';
+  }
+
+  renderCurrentView();
+}
+
+function renderCurrentView() {
+  if (!currentTree) return;
+
+  // Apply filters
+  const fm = createFilterManager(currentFilter);
+  const filtered = fm.applyToTree(currentTree);
+  const dataToRender = filtered || currentTree;
+
+  if (currentView === 'treemap') {
+    treemap.render(dataToRender);
+  } else {
+    listView.render(dataToRender);
   }
 }
 
@@ -519,7 +560,10 @@ function setupResize() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (treemap && currentTree) treemap.resize();
+      if (currentTree) {
+        if (currentView === 'treemap') treemap.resize();
+        else listView.resize();
+      }
     }, 250);
   });
 }

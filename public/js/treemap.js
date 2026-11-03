@@ -33,15 +33,58 @@ class TreemapViz {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
 
+    // Count total files
+    let totalFiles = 0;
+    function countFiles(node) {
+      if (node.type === 'file') totalFiles++;
+      else if (node.children) node.children.forEach(countFiles);
+    }
+    countFiles(data);
+
+    // For large datasets, limit treemap to top 1000 files by size
+    let renderData = data;
+    if (totalFiles > 1000) {
+      // Create a filtered copy with only top 1000 files
+      const allFiles = [];
+      function collectFiles(node) {
+        if (node.type === 'file') allFiles.push(node);
+        else if (node.children) node.children.forEach(collectFiles);
+      }
+      collectFiles(data);
+      allFiles.sort((a, b) => b.size - a.size);
+      const topFiles = new Set(allFiles.slice(0, 1000).map(f => f.path));
+
+      // Build filtered tree
+      function filterTree(node) {
+        if (node.type === 'file') {
+          return topFiles.has(node.path) ? { ...node } : null;
+        }
+        const filteredChildren = (node.children || [])
+          .map(filterTree)
+          .filter(Boolean);
+        if (filteredChildren.length === 0) return null;
+        return { ...node, children: filteredChildren, size: filteredChildren.reduce((s, c) => s + (c.size || 0), 0) };
+      }
+      renderData = filterTree(data);
+      if (!renderData) renderData = data;
+    }
+
     // Clear previous
     this.container.innerHTML = '';
+    if (totalFiles > 1000) {
+      const note = document.createElement('div');
+      note.style.cssText = 'position:absolute; top:8px; right:8px; background:rgba(0,0,0,0.7); color:#f59e0b; padding:4px 8px; border-radius:4px; font-size:11px; z-index:10;';
+      note.textContent = `Mostrando top 1000 de ${totalFiles.toLocaleString()} archivos`;
+      this.container.appendChild(note);
+    }
+
     this.svg = d3.select(this.container)
       .append('svg')
       .attr('width', width)
       .attr('height', height);
 
     // Create hierarchy
-    const root = d3.hierarchy(data)
+    const root = d3.hierarchy(renderData)
       .sum(d => d.type === 'file' ? d.size : 0)
       .sort((a, b) => b.value - a.value);
 

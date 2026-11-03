@@ -30,6 +30,8 @@ class Scanner {
     this.cancelled = false;
     this.totalFiles = 0;
     this.totalSize = 0;
+    this.skippedDirs = 0;
+    this.errors = [];
   }
 
   cancel() {
@@ -40,6 +42,8 @@ class Scanner {
     this.cancelled = false;
     this.totalFiles = 0;
     this.totalSize = 0;
+    this.skippedDirs = 0;
+    this.errors = [];
   }
 
   async scan(targetPath, onProgress) {
@@ -56,6 +60,13 @@ class Scanner {
     await this._scanDir(targetPath, root, onProgress);
     // Calculate directory sizes bottom-up
     this._calcSizes(root);
+    // Attach scan stats
+    root._stats = {
+      totalFiles: this.totalFiles,
+      totalSize: this.totalSize,
+      skippedDirs: this.skippedDirs,
+      errors: this.errors
+    };
     return root;
   }
 
@@ -68,6 +79,8 @@ class Scanner {
     } catch (err) {
       // Permission denied or inaccessible - skip
       node.error = err.code || err.message;
+      this.skippedDirs++;
+      this.errors.push({ path: dirPath, error: err.code || err.message });
       return;
     }
 
@@ -111,7 +124,8 @@ class Scanner {
           onProgress({
             filesScanned: this.totalFiles,
             totalSize: this.totalSize,
-            currentPath: fullPath
+            currentPath: fullPath,
+            skippedDirs: this.skippedDirs
           });
         }
       }

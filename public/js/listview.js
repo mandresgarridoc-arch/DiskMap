@@ -59,7 +59,8 @@ class ListView {
       type: child.type,
       category: child.category,
       children: child.children,
-      modified: child.modified
+      modified: child.modified,
+      locked: child.locked === true
     }));
 
     this.maxSize = Math.max(...items.map(i => i.size), 1);
@@ -91,28 +92,29 @@ class ListView {
     `;
 
     for (const item of items) {
+      const isLocked = item.locked === true;
       const ratio = item.size / this.maxSize;
-      const barColor = getSizeColor(ratio);
-      const barWidth = Math.max(2, ratio * 100);
-      const icon = item.type === 'directory' ? '📁' : this._getFileIcon(item.category);
-      const percent = (ratio * 100).toFixed(1);
+      const barColor = isLocked ? '#64748b' : getSizeColor(ratio);
+      const barWidth = isLocked ? 100 : Math.max(2, ratio * 100);
+      const icon = isLocked ? '🔒' : (item.type === 'directory' ? '📁' : this._getFileIcon(item.category));
+      const percent = isLocked ? '—' : (ratio * 100).toFixed(1);
       const isDir = item.type === 'directory';
 
       html += `
-        <div class="list-row" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" data-size="${item.size}" data-type="${item.type}" data-isdir="${isDir}">
+        <div class="list-row ${isLocked ? 'locked' : ''}" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" data-size="${item.size}" data-type="${item.type}" data-isdir="${isDir}" data-locked="${isLocked}">
           <div class="col-name">
             <span class="item-icon">${icon}</span>
             <div style="overflow:hidden;">
               <div class="item-name" title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</div>
-              ${isDir ? `<div class="item-path">${item.children ? item.children.length : 0} elementos</div>` : `<div class="item-path">${escapeHtml(item.category)}</div>`}
+              ${isLocked ? `<div class="item-path" style="color:var(--warning);">Sin permisos de lectura</div>` : (isDir ? `<div class="item-path">${item.children ? item.children.length : 0} elementos</div>` : `<div class="item-path">${escapeHtml(item.category)}</div>`)}
             </div>
           </div>
-          <div class="col-size">${formatBytes(item.size)}</div>
+          <div class="col-size">${isLocked ? '—' : formatBytes(item.size)}</div>
           <div class="col-bar">
             <div class="bar-track">
-              <div class="bar-fill" style="width:${barWidth}%; background:${barColor};"></div>
+              <div class="bar-fill" style="width:${barWidth}%; background:${barColor}; ${isLocked ? 'opacity:0.3;' : ''}"></div>
             </div>
-            <span class="bar-percent">${percent}%</span>
+            <span class="bar-percent">${percent}${isLocked ? '' : '%'}</span>
           </div>
         </div>
       `;
@@ -133,6 +135,20 @@ class ListView {
     this.container.querySelectorAll('.list-row').forEach(row => {
       row.addEventListener('click', () => {
         const isDir = row.dataset.isdir === 'true';
+        const isLocked = row.dataset.locked === 'true';
+        if (isLocked) {
+          // Mostrar info de carpeta bloqueada
+          if (this.onFileAction) {
+            this.onFileAction('info', {
+              path: row.dataset.path,
+              name: row.dataset.name,
+              size: 0,
+              type: 'directory',
+              locked: true
+            });
+          }
+          return;
+        }
         if (isDir) {
           const item = items.find(i => i.path === row.dataset.path);
           if (item && item.children && item.children.length > 0) {

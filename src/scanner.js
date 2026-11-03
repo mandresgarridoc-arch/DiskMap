@@ -31,6 +31,7 @@ class Scanner {
     this.totalFiles = 0;
     this.totalSize = 0;
     this.skippedDirs = 0;
+    this.lockedFolders = [];  // Carpetas sin acceso con su ruta y motivo
     this.errors = [];
   }
 
@@ -43,6 +44,7 @@ class Scanner {
     this.totalFiles = 0;
     this.totalSize = 0;
     this.skippedDirs = 0;
+    this.lockedFolders = [];
     this.errors = [];
   }
 
@@ -60,11 +62,12 @@ class Scanner {
     await this._scanDir(targetPath, root, onProgress);
     // Calculate directory sizes bottom-up
     this._calcSizes(root);
-    // Attach scan stats
+    // Attach scan stats (incluyendo carpetas bloqueadas)
     root._stats = {
       totalFiles: this.totalFiles,
       totalSize: this.totalSize,
       skippedDirs: this.skippedDirs,
+      lockedFolders: this.lockedFolders,
       errors: this.errors
     };
     return root;
@@ -77,9 +80,17 @@ class Scanner {
     try {
       entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
     } catch (err) {
-      // Permission denied or inaccessible - skip
+      // Permission denied or inaccessible - registrar como carpeta bloqueada
       node.error = err.code || err.message;
+      node.locked = true;
       this.skippedDirs++;
+      this.lockedFolders.push({
+        path: dirPath,
+        name: node.name || path.basename(dirPath),
+        reason: err.code === 'EPERM' || err.code === 'EACCES'
+          ? 'Sin permisos de lectura'
+          : (err.code || err.message)
+      });
       this.errors.push({ path: dirPath, error: err.code || err.message });
       return;
     }

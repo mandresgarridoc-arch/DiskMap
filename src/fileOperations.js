@@ -97,10 +97,26 @@ class FileOperations {
           size: stat.size,
           isDirectory: stat.isDirectory(),
           modified: stat.mtimeMs,
-          created: stat.birthtimeMs
+          created: stat.birthtimeMs,
+          locked: false
         }
       };
     } catch (err) {
+      // Carpeta/archivo sin acceso
+      if (err.code === 'EPERM' || err.code === 'EACCES') {
+        return {
+          success: true,
+          info: {
+            name: path.basename(filePath),
+            path: filePath,
+            size: 0,
+            isDirectory: true,
+            modified: 0,
+            created: 0,
+            locked: true
+          }
+        };
+      }
       return { success: false, message: err.message };
     }
   }

@@ -353,7 +353,7 @@ function renderCurrentView() {
 // File actions
 function handleFileAction(action, fileData) {
   if (action === 'info') {
-    showFileInfo(fileData.path);
+    showFileInfo(fileData.path, fileData.locked === true);
   } else if (action === 'location') {
     fetch('/api/file/open-location', {
       method: 'POST',
@@ -428,20 +428,40 @@ function setupContextMenu() {
   });
 }
 
-async function showFileInfo(filePath) {
+async function showFileInfo(filePath, locked) {
+  if (locked) {
+    // Mostrar info de carpeta bloqueada sin llamar al API
+    document.getElementById('infoContent').innerHTML = `
+      <div class="info-row"><span class="info-label">Ruta</span><span class="info-value">${escapeHtml(filePath)}</span></div>
+      <div class="info-row"><span class="info-label">Estado</span><span class="info-value" style="color:var(--warning);">🔒 Sin permisos de lectura</span></div>
+      <div class="info-row"><span class="info-label">Motivo</span><span class="info-value">El sistema operativo no permite acceder a esta carpeta</span></div>
+      <div class="info-row"><span class="info-label">Sugerencia</span><span class="info-value">Ejecute la aplicación como administrador si necesita analizar esta carpeta</span></div>
+    `;
+    document.getElementById('infoModal').style.display = 'flex';
+    return;
+  }
   try {
     const res = await fetch(`/api/file/info?path=${encodeURIComponent(filePath)}`);
     const data = await res.json();
     if (data.success) {
       const info = data.info;
-      document.getElementById('infoContent').innerHTML = `
-        <div class="info-row"><span class="info-label">Nombre</span><span class="info-value">${escapeHtml(info.name)}</span></div>
-        <div class="info-row"><span class="info-label">Ruta</span><span class="info-value">${escapeHtml(info.path)}</span></div>
-        <div class="info-row"><span class="info-label">Tamaño</span><span class="info-value">${formatBytes(info.size)}</span></div>
-        <div class="info-row"><span class="info-label">Tipo</span><span class="info-value">${info.isDirectory ? 'Carpeta' : 'Archivo'}</span></div>
-        <div class="info-row"><span class="info-label">Modificado</span><span class="info-value">${new Date(info.modified).toLocaleString()}</span></div>
-        <div class="info-row"><span class="info-label">Creado</span><span class="info-value">${new Date(info.created).toLocaleString()}</span></div>
-      `;
+      if (info.locked) {
+        document.getElementById('infoContent').innerHTML = `
+          <div class="info-row"><span class="info-label">Nombre</span><span class="info-value">${escapeHtml(info.name)}</span></div>
+          <div class="info-row"><span class="info-label">Ruta</span><span class="info-value">${escapeHtml(info.path)}</span></div>
+          <div class="info-row"><span class="info-label">Estado</span><span class="info-value" style="color:var(--warning);">🔒 Sin permisos de lectura</span></div>
+          <div class="info-row"><span class="info-label">Motivo</span><span class="info-value">El sistema operativo no permite acceder a esta carpeta</span></div>
+        `;
+      } else {
+        document.getElementById('infoContent').innerHTML = `
+          <div class="info-row"><span class="info-label">Nombre</span><span class="info-value">${escapeHtml(info.name)}</span></div>
+          <div class="info-row"><span class="info-label">Ruta</span><span class="info-value">${escapeHtml(info.path)}</span></div>
+          <div class="info-row"><span class="info-label">Tamaño</span><span class="info-value">${formatBytes(info.size)}</span></div>
+          <div class="info-row"><span class="info-label">Tipo</span><span class="info-value">${info.isDirectory ? 'Carpeta' : 'Archivo'}</span></div>
+          <div class="info-row"><span class="info-label">Modificado</span><span class="info-value">${new Date(info.modified).toLocaleString()}</span></div>
+          <div class="info-row"><span class="info-label">Creado</span><span class="info-value">${new Date(info.created).toLocaleString()}</span></div>
+        `;
+      }
       document.getElementById('infoModal').style.display = 'flex';
     }
   } catch (err) {

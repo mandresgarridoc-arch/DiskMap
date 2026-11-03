@@ -1,0 +1,18 @@
+{
+  "name": "disklen",
+  "version": "1.0.0",
+  "description": "Modern web-based disk space analyzer with interactive treemap visualization",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["disk", "analyzer", "treemap", "storage", "visualization"],
+  "author": "DiskLen Team",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.14.2",
+    "trash": "^8.1.1"
+  }
+}

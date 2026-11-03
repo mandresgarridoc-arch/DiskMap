@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiskLen - Analizador de Disco</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <span class="logo-icon">💾</span>
+        <h1>DiskLen</h1>
+        <span class="subtitle">Analizador de espacio en disco</span>
+      </div>
+      <div class="header-actions">
+        <button id="btnTheme" class="btn-icon" title="Cambiar tema">🌙</button>
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="section">
+          <h3>Unidades de almacenamiento</h3>
+          <div id="drivesList" class="drives-list">
+            <div class="loading">Cargando unidades...</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Seleccionar carpeta</h3>
+          <div class="folder-picker">
+            <input type="text" id="folderPath" placeholder="Ruta de carpeta..." readonly>
+            <button id="btnBrowse" class="btn btn-secondary">Examinar</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Escanear</h3>
+          <button id="btnScan" class="btn btn-primary btn-block">🔍 Iniciar escaneo</button>
+          <button id="btnCancel" class="btn btn-danger btn-block" style="display:none;">⏹ Cancelar</button>
+        </div>
+
+        <div class="section">
+          <h3>Filtros</h3>
+          <div class="filter-group">
+            <label>Categoría</label>
+            <div class="checkbox-group">
+              <label><input type="checkbox" value="video" class="cat-filter"> Videos</label>
+              <label><input type="checkbox" value="image" class="cat-filter"> Imágenes</label>
+              <label><input type="checkbox" value="document" class="cat-filter"> Documentos</label>
+              <label><input type="checkbox" value="audio" class="cat-filter"> Audio</label>
+              <label><input type="checkbox" value="archive" class="cat-filter"> Archivos</label>
+              <label><input type="checkbox" value="temp" class="cat-filter"> Temporales</label>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Tamaño mínimo</label>
+            <select id="sizeFilter">
+              <option value="0">Todos</option>
+              <option value="104857600">> 100 MB</option>
+              <option value="1073741824">> 1 GB</option>
+              <option value="5368709120">> 5 GB</option>
+              <option value="10737418240">> 10 GB</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <label>Antigüedad</label>
+            <select id="ageFilter">
+              <option value="">Todos</option>
+              <option value="30">Más de 30 días</option>
+              <option value="90">Más de 90 días</option>
+              <option value="180">Más de 180 días</option>
+              <option value="365">Más de 1 año</option>
+            </select>
+          </div>
+          <button id="btnApplyFilter" class="btn btn-secondary btn-block">Aplicar filtros</button>
+          <button id="btnClearFilter" class="btn btn-secondary btn-block">Limpiar filtros</button>
+        </div>
+      </aside>
+
+      <!-- Content Area -->
+      <main class="content">
+        <!-- Progress Bar -->
+        <div id="progressSection" class="progress-section" style="display:none;">
+          <div class="progress-info">
+            <span id="progressText">Escaneando...</span>
+            <span id="progressCount">0 archivos</span>
+          </div>
+          <div class="progress-bar">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <div id="progressPath" class="progress-path"></div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div id="statsSection" class="stats-section" style="display:none;">
+          <div class="stat-card">
+            <div class="stat-value" id="statFiles">0</div>
+            <div class="stat-label">Archivos</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statSize">0 B</div>
+            <div class="stat-label">Tamaño total</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statDirs">0</div>
+            <div class="stat-label">Carpetas</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="statLargest">-</div>
+            <div class="stat-label">Mayor archivo</div>
+          </div>
+        </div>
+
+        <!-- Treemap Visualization -->
+        <div id="treemapContainer" class="treemap-container">
+          <div id="treemap" class="treemap"></div>
+          <div id="tooltip" class="tooltip"></div>
+        </div>
+
+        <!-- Context Menu -->
+        <div id="contextMenu" class="context-menu" style="display:none;">
+          <div class="context-item" data-action="trash">🗑 Mover a papelera</div>
+          <div class="context-item" data-action="delete">❌ Eliminar permanentemente</div>
+          <div class="context-item" data-action="location">📁 Abrir ubicación</div>
+          <div class="context-item" data-action="open">🔗 Abrir archivo</div>
+          <div class="context-item" data-action="info">ℹ️ Información</div>
+        </div>
+
+        <!-- Info Modal -->
+        <div id="infoModal" class="modal" style="display:none;">
+          <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <h3>Información del archivo</h3>
+            <div id="infoContent"></div>
+          </div>
+        </div>
+
+        <!-- Folder Browser Modal -->
+        <div id="browseModal" class="modal" style="display:none;">
+          <div class="modal-content modal-large">
+            <span class="modal-close">&times;</span>
+            <h3>Seleccionar carpeta</h3>
+            <div id="browsePath" class="browse-path"></div>
+            <div id="browseList" class="browse-list"></div>
+            <div class="modal-actions">
+              <button id="btnSelectFolder" class="btn btn-primary">Seleccionar esta carpeta</button>
+              <button id="btnCancelBrowse" class="btn btn-secondary">Cancelar</button>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="js/observer.js"></script>
+  <script src="js/treemap.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

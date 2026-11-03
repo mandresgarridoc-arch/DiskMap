@@ -659,6 +659,126 @@ body {
   bottom: 0;
 }
 
+/* List Toolbar */
+.list-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.list-search {
+  flex: 1;
+  min-width: 200px;
+  padding: 6px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.list-search:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.list-pagesize {
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.compact-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.compact-toggle input {
+  accent-color: var(--accent);
+}
+
+/* List Pagination */
+.list-pagination {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border);
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.page-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.page-btn.active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.page-info {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* Compact mode */
+.list-view.compact .list-row {
+  padding: 4px 8px;
+}
+
+.list-view.compact .col-name .item-name {
+  font-size: 12px;
+}
+
+.list-view.compact .col-size {
+  font-size: 11px;
+}
+
+.list-view.compact .bar-track {
+  height: 8px;
+}
+
+.list-view.compact .item-icon {
+  font-size: 12px;
+}
+
+.list-view.compact .item-path {
+  display: none;
+}
+
 /* List View */
 .list-container {
   flex: 1;

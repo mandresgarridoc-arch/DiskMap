@@ -1,19 +1,5 @@
 // public/js/listview.js
-// List view with colored size bars (alternative to treemap)
-// Supports drill-down navigation into folders
-
-const CATEGORY_COLORS_LIST = {
-  video: '#3b82f6',
-  image: '#ef4444',
-  document: '#22c55e',
-  audio: '#f59e0b',
-  archive: '#8b5cf6',
-  code: '#06b6d4',
-  executable: '#ec4899',
-  temp: '#64748b',
-  other: '#94a3b8',
-  directory: '#475569'
-};
+// List view with colored size bars, search, pagination and compact mode
 
 function getSizeColor(ratio) {
   if (ratio < 0.25) return '#22c55e';
@@ -27,12 +13,19 @@ class ListView {
     this.container = document.getElementById(containerId);
     this.rootData = null;
     this.currentNode = null;
-    this.navStack = []; // Array of {name, node} for breadcrumb
+    this.navStack = [];
     this.sortBy = 'size';
     this.sortDir = 'desc';
     this.onFileAction = null;
     this.maxSize = 0;
     this.stats = null;
+
+    // Search & pagination
+    this.searchQuery = '';
+    this.pageSize = 100;
+    this.currentPage = 1;
+    this.compactMode = false;
+    this.allItems = []; // Flattened items for current node
   }
 
   render(data) {
@@ -42,17 +35,14 @@ class ListView {
     this.rootData = data;
     this.currentNode = data;
     this.navStack = [];
+    this.currentPage = 1;
+    this.searchQuery = '';
     this._renderCurrentNode();
   }
 
-  _renderCurrentNode() {
-    const node = this.currentNode;
-    if (!node || !node.children || node.children.length === 0) {
-      this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
-      return;
-    }
-
-    const items = node.children.map(child => ({
+  _getItems(node) {
+    if (!node || !node.children) return [];
+    return node.children.map(child => ({
       name: child.name,
       path: child.path,
       size: child.size || 0,
@@ -62,10 +52,16 @@ class ListView {
       modified: child.modified,
       locked: child.locked === true
     }));
+  }
 
-    this.maxSize = Math.max(...items.map(i => i.size), 1);
+  _filterItems(items) {
+    if (!this.searchQuery) return items;
+    const q = this.searchQuery.toLowerCase();
+    return items.filter(item => item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q));
+  }
 
-    items.sort((a, b) => {
+  _sortItems(items) {
+    return items.sort((a, b) => {
       let va = a[this.sortBy], vb = b[this.sortBy];
       if (typeof va === 'string') {
         va = va.toLowerCase(); vb = vb.toLowerCase();
@@ -73,6 +69,36 @@ class ListView {
       }
       return this.sortDir === 'asc' ? va - vb : vb - va;
     });
+  }
+
+  _renderCurrentNode() {
+    const node = this.currentNode;
+    if (!node) {
+      this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
+      this._renderPagination(0);
+      return;
+    }
+
+    this.allItems = this._getItems(node);
+    this.maxSize = Math.max(...this.allItems.map(i => i.size), 1);
+
+    let filtered = this._filterItems(this.allItems);
+    filtered = this._sortItems(filtered);
+
+    const totalItems = filtered.length;
+    const totalPages = this.pageSize > 0 ? Math.ceil(totalItems / this.pageSize) : 1;
+    if (this.currentPage > totalPages && totalPages > 0) this.currentPage = totalPages;
+    if (this.currentPage < 1) this.currentPage = 1;
+
+    const startIdx = this.pageSize > 0 ? (this.currentPage - 1) * this.pageSize : 0;
+    const endIdx = this.pageSize > 0 ? startIdx + this.pageSize : filtered.length;
+    const pageItems = filtered.slice(startIdx, endIdx);
+
+    if (pageItems.length === 0 && this.allItems.length === 0) {
+      this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
+      this._renderPagination(0);
+      return;
+    }
 
     // Breadcrumb
     let breadcrumbHtml = '<div class="breadcrumb">';
@@ -83,15 +109,18 @@ class ListView {
     });
     breadcrumbHtml += '</div>';
 
-    let html = breadcrumbHtml + `
+    let html = breadcrumbHtml;
+
+    // Header with sort
+    html += `
       <div class="list-header">
-        <div class="col-name">Nombre</div>
-        <div class="col-size">Tamaño</div>
+        <div class="col-name sortable" data-sort="name">Nombre ${this.sortBy === 'name' ? (this.sortDir === 'asc' ? '▲' : '▼') : ''}</div>
+        <div class="col-size sortable" data-sort="size">Tamaño ${this.sortBy === 'size' ? (this.sortDir === 'asc' ? '▲' : '▼') : ''}</div>
         <div class="col-bar"><span style="flex:1">Peso relativo</span></div>
       </div>
     `;
 
-    for (const item of items) {
+    for (const item of pageItems) {
       const isLocked = item.locked === true;
       const ratio = item.size / this.maxSize;
       const barColor = isLocked ? '#64748b' : getSizeColor(ratio);
@@ -121,50 +150,40 @@ class ListView {
     }
 
     if (this.stats) {
+      const shown = pageItems.length;
+      const total = this.allItems.length;
       html += `
         <div class="list-footer">
-          <span>📊 ${this.stats.totalFiles.toLocaleString()} archivos | ${formatBytes(this.stats.totalSize)} total</span>
-          ${this.stats.skippedDirs > 0 ? `<span style="color:var(--warning); margin-left:16px;">⚠️ ${this.stats.skippedDirs} carpetas sin acceso (permisos)</span>` : ''}
+          <span>📊 ${this.stats.totalFiles.toLocaleString()} archivos | ${formatBytes(this.stats.totalSize)} total | Mostrando ${shown} de ${total} en esta vista</span>
+          ${this.stats.skippedDirs > 0 ? `<span style="color:var(--warning); margin-left:16px;">⚠️ ${this.stats.skippedDirs} carpetas sin acceso</span>` : ''}
         </div>
       `;
     }
 
     this.container.innerHTML = html;
+    this.container.classList.toggle('compact', this.compactMode);
 
-    // Attach event listeners
+    // Event listeners
     this.container.querySelectorAll('.list-row').forEach(row => {
       row.addEventListener('click', () => {
         const isDir = row.dataset.isdir === 'true';
         const isLocked = row.dataset.locked === 'true';
         if (isLocked) {
-          // Mostrar info de carpeta bloqueada
-          if (this.onFileAction) {
-            this.onFileAction('info', {
-              path: row.dataset.path,
-              name: row.dataset.name,
-              size: 0,
-              type: 'directory',
-              locked: true
-            });
-          }
+          if (this.onFileAction) this.onFileAction('info', { path: row.dataset.path, name: row.dataset.name, size: 0, type: 'directory', locked: true });
           return;
         }
         if (isDir) {
-          const item = items.find(i => i.path === row.dataset.path);
+          const item = this.allItems.find(i => i.path === row.dataset.path);
           if (item && item.children && item.children.length > 0) {
             this.navStack.push({ name: row.dataset.name, node: this.currentNode });
             this.currentNode = item;
+            this.currentPage = 1;
             this._renderCurrentNode();
             return;
           }
         }
         if (this.onFileAction) {
-          this.onFileAction('info', {
-            path: row.dataset.path,
-            name: row.dataset.name,
-            size: parseInt(row.dataset.size),
-            type: row.dataset.type
-          });
+          this.onFileAction('info', { path: row.dataset.path, name: row.dataset.name, size: parseInt(row.dataset.size), type: row.dataset.type });
         }
       });
       row.addEventListener('contextmenu', (e) => {
@@ -181,6 +200,21 @@ class ListView {
       });
     });
 
+    // Sort headers
+    this.container.querySelectorAll('.sortable').forEach(header => {
+      header.addEventListener('click', () => {
+        const field = header.dataset.sort;
+        if (this.sortBy === field) {
+          this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortBy = field;
+          this.sortDir = field === 'name' ? 'asc' : 'desc';
+        }
+        this._renderCurrentNode();
+      });
+      header.style.cursor = 'pointer';
+    });
+
     // Breadcrumb navigation
     this.container.querySelectorAll('.breadcrumb-item').forEach(item => {
       item.addEventListener('click', () => {
@@ -190,17 +224,46 @@ class ListView {
           this.navStack = [];
         } else {
           const idx = parseInt(level);
-          // Navigate to that level
           this.navStack = this.navStack.slice(0, idx + 1);
-          // Rebuild currentNode by traversing from root
           this.currentNode = this.rootData;
           for (let i = 0; i <= idx; i++) {
             const targetName = this.navStack[i].name;
-            const found = this.currentNode.children.find(c => c.name === targetName);
+            const found = this.currentNode.children ? this.currentNode.children.find(c => c.name === targetName) : null;
             if (found) this.currentNode = found;
           }
         }
+        this.currentPage = 1;
         this._renderCurrentNode();
+      });
+    });
+
+    this._renderPagination(totalPages, totalItems);
+  }
+
+  _renderPagination(totalPages, totalItems) {
+    const container = document.getElementById('listPagination');
+    if (!container) return;
+
+    if (this.pageSize === 0 || totalPages <= 1) {
+      container.innerHTML = totalItems > 0
+        ? `<span class="page-info">${totalItems} elementos (todos mostrados)</span>`
+        : '';
+      return;
+    }
+
+    let html = '';
+    html += `<button class="page-btn" ${this.currentPage <= 1 ? 'disabled' : ''} data-page="${this.currentPage - 1}">◀ Anterior</button>`;
+    html += `<span class="page-info">Página ${this.currentPage} de ${totalPages} (${totalItems} elementos)</span>`;
+    html += `<button class="page-btn" ${this.currentPage >= totalPages ? 'disabled' : ''} data-page="${this.currentPage + 1}">Siguiente ▶</button>`;
+
+    container.innerHTML = html;
+    container.querySelectorAll('.page-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const page = parseInt(btn.dataset.page);
+        if (page >= 1 && page <= totalPages) {
+          this.currentPage = page;
+          this._renderCurrentNode();
+        }
       });
     });
   }
@@ -226,8 +289,25 @@ class ListView {
       this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
     } else {
       this.sortBy = field;
-      this.sortDir = 'desc';
+      this.sortDir = field === 'name' ? 'asc' : 'desc';
     }
+    this._renderCurrentNode();
+  }
+
+  setSearch(query) {
+    this.searchQuery = query;
+    this.currentPage = 1;
+    this._renderCurrentNode();
+  }
+
+  setPageSize(size) {
+    this.pageSize = parseInt(size);
+    this.currentPage = 1;
+    this._renderCurrentNode();
+  }
+
+  setCompact(mode) {
+    this.compactMode = mode;
     this._renderCurrentNode();
   }
 }

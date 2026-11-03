@@ -121,6 +121,17 @@ function setupEventListeners() {
   document.getElementById('btnViewTreemap').addEventListener('click', () => switchView('treemap'));
   document.getElementById('btnViewList').addEventListener('click', () => switchView('list'));
 
+  // List view controls
+  document.getElementById('listSearch').addEventListener('input', (e) => {
+    if (listView) listView.setSearch(e.target.value);
+  });
+  document.getElementById('listPageSize').addEventListener('change', (e) => {
+    if (listView) listView.setPageSize(e.target.value);
+  });
+  document.getElementById('compactMode').addEventListener('change', (e) => {
+    if (listView) listView.setCompact(e.target.checked);
+  });
+
   // Size filter change
   document.getElementById('sizeFilter').addEventListener('change', () => {});
 }

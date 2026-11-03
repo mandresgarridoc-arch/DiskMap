@@ -136,7 +136,18 @@
 
         <!-- List Visualization -->
         <div id="listContainer" class="list-container" style="display:none;">
+          <div class="list-toolbar">
+            <input type="text" id="listSearch" placeholder="🔍 Buscar por nombre..." class="list-search">
+            <select id="listPageSize" class="list-pagesize">
+              <option value="50">50 por página</option>
+              <option value="100" selected>100 por página</option>
+              <option value="500">500 por página</option>
+              <option value="0">Todos</option>
+            </select>
+            <label class="compact-toggle"><input type="checkbox" id="compactMode"> Vista compacta</label>
+          </div>
           <div id="listView" class="list-view"></div>
+          <div id="listPagination" class="list-pagination"></div>
         </div>
 
         <!-- Context Menu -->

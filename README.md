@@ -72,7 +72,4 @@ disklen/
 5. Explora la visualización treemap
 6. Haz clic derecho sobre un archivo para ver opciones
 
-## Licencia
 
-MIT
->>>>>>> 42e1fb8 (Initial commit: DiskLen - Modern disk space analyzer)

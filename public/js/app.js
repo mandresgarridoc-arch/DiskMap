@@ -18,20 +18,26 @@ function formatBytes(bytes) {
 
 // State
 let ws = null;
-let currentTree = null;
+let currentRoot = null;          // Lightweight scan summary { name, path, size, _stats }
+let currentTreemapRaw = null;    // Raw pruned subtree returned by /api/tree
+let currentScanId = 0;
 let selectedPath = null;
 let selectedDrive = null;
 let treemap = null;
 let listView = null;
 let currentView = 'treemap';
 let currentFilter = {};
+let handledScanKey = null;       // Avoid processing the same scan twice (WS + polling)
+let treemapTrail = [];           // Ancestors of the current treemap root
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
   treemap = new TreemapViz('treemap', 'tooltip');
   treemap.onFileAction = handleFileAction;
+  treemap.onNavigate = (nodePath, trail) => loadTreemap(nodePath, trail);
   listView = new ListView('listView');
   listView.onFileAction = handleFileAction;
+  listView.onNavigate = (nodePath, navStack) => loadListChildren(nodePath, navStack);
 
   initWebSocket();
   loadDrives();
@@ -61,6 +67,13 @@ function initWebSocket() {
 function handleWsMessage(msg) {
   switch (msg.type) {
     case 'state':
+      // On reconnect, if a scan is already complete, load its summary
+      if (msg.data && msg.data.hasResult) {
+        handleScanComplete(msg.data);
+      } else {
+        updateProgressUI(msg.data);
+      }
+      break;
     case 'status':
       updateProgressUI(msg.data);
       break;
@@ -140,8 +153,13 @@ function setupEventListeners() {
   document.getElementById('listSearch').addEventListener('input', (e) => {
     if (listView) listView.setSearch(e.target.value);
   });
+  let globalSearchTimer = null;
   document.getElementById('globalSearch').addEventListener('input', (e) => {
-    if (listView) listView.setGlobalSearch(e.target.value);
+    const value = e.target.value;
+    clearTimeout(globalSearchTimer);
+    globalSearchTimer = setTimeout(() => {
+      if (listView) listView.setGlobalSearch(value);
+    }, 300);
   });
   document.getElementById('listPageSize').addEventListener('change', (e) => {
     if (listView) listView.setPageSize(e.target.value);
@@ -161,6 +179,14 @@ async function startScan() {
     return;
   }
 
+  // Prevent starting a new scan while one is in progress
+  const btnScan = document.getElementById('btnScan');
+  if (btnScan.disabled) {
+    return;
+  }
+  btnScan.disabled = true;
+  handledScanKey = null;
+
   document.getElementById('btnScan').style.display = 'none';
   document.getElementById('btnCancel').style.display = 'block';
   document.getElementById('progressSection').style.display = 'block';
@@ -176,6 +202,10 @@ async function startScan() {
     if (!data.success) {
       alert(data.message || 'Error al iniciar escaneo');
       resetScanButtons();
+    } else {
+      currentScanId = data.scanId || 0;
+      // Start polling for scan completion (fallback if WebSocket disconnects)
+      startScanPolling();
     }
   } catch (err) {
     alert('Error de conexión: ' + err.message);
@@ -188,6 +218,44 @@ async function cancelScan() {
     await fetch('/api/scan/cancel', { method: 'POST' });
   } catch (err) {
     console.error('Error cancelling:', err);
+  }
+}
+
+// Polling for scan completion (fallback when WebSocket is disconnected)
+let scanPollingInterval = null;
+function startScanPolling() {
+  if (scanPollingInterval) clearInterval(scanPollingInterval);
+  scanPollingInterval = setInterval(async () => {
+    try {
+      const res = await fetch('/api/scan/status');
+      const data = await res.json();
+      if (data.success && data.state) {
+        const state = data.state;
+        updateProgressUI(state);
+        if (state.status === 'complete' && state.hasResult) {
+          clearInterval(scanPollingInterval);
+          scanPollingInterval = null;
+          handleScanComplete(state);
+        } else if (state.status === 'cancelled') {
+          clearInterval(scanPollingInterval);
+          scanPollingInterval = null;
+          handleScanCancelled();
+        } else if (state.status === 'error') {
+          clearInterval(scanPollingInterval);
+          scanPollingInterval = null;
+          handleScanError(state);
+        }
+      }
+    } catch (err) {
+      console.error('Polling error:', err);
+    }
+  }, 2000);
+}
+
+function stopScanPolling() {
+  if (scanPollingInterval) {
+    clearInterval(scanPollingInterval);
+    scanPollingInterval = null;
   }
 }
 
@@ -208,72 +276,96 @@ function updateProgressUI(state) {
   }
 }
 
-function handleScanComplete(state) {
+async function handleScanComplete(state) {
+  stopScanPolling();
   resetScanButtons();
   document.getElementById('progressSection').style.display = 'none';
 
-  if (state && state.result) {
-    currentTree = state.result;
-    renderStats(state.result);
-    document.getElementById('statsSection').style.display = 'grid';
-    renderCurrentView();
+  // The backend only sends a lightweight summary; fetch the status once as a fallback.
+  if (!state || !state.hasResult || !state.summary) {
+    try {
+      const res = await fetch('/api/scan/status');
+      const data = await res.json();
+      if (data.success && data.state && data.state.hasResult) {
+        return handleScanComplete(data.state);
+      }
+    } catch (err) {
+      console.error('Error fetching scan status:', err);
+    }
+    console.error('No scan result available');
+    return;
   }
+
+  const summary = state.summary;
+  const key = `${summary.path}|${summary.size}|${summary._stats ? summary._stats.totalFiles : 0}`;
+  if (handledScanKey === key) return;
+  handledScanKey = key;
+
+  currentRoot = summary;
+  renderStats(summary);
+  document.getElementById('statsSection').style.display = 'grid';
+
+  // Load only the data needed for the views (small, on-demand payloads)
+  await Promise.all([
+    loadTreemap(summary.path, []),
+    listView.load(summary.path, summary._stats)
+  ]);
 }
 
 function handleScanCancelled() {
+  stopScanPolling();
   resetScanButtons();
   document.getElementById('progressSection').style.display = 'none';
   alert('Escaneo cancelado');
 }
 
 function handleScanError(state) {
+  stopScanPolling();
   resetScanButtons();
   document.getElementById('progressSection').style.display = 'none';
   alert('Error: ' + (state ? state.error : 'Error desconocido'));
 }
 
 function resetScanButtons() {
-  document.getElementById('btnScan').style.display = 'block';
+  const btnScan = document.getElementById('btnScan');
+  btnScan.style.display = 'block';
+  btnScan.disabled = false;
   document.getElementById('btnCancel').style.display = 'none';
 }
 
 function resetUI() {
-  currentTree = null;
+  stopScanPolling();
+  currentRoot = null;
+  currentTreemapRaw = null;
+  handledScanKey = null;
+  treemapTrail = [];
+  currentScanId = 0;
   document.getElementById('statsSection').style.display = 'none';
   document.getElementById('progressSection').style.display = 'none';
   treemap.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la visualización</p></div>';
-  listView.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
+  if (listView) listView.reset();
   resetScanButtons();
 }
 
-function renderStats(tree) {
-  if (!tree) return;
-  let fileCount = 0;
-  let dirCount = 0;
-  let largestFile = null;
+function renderStats(summary) {
+  if (!summary) return;
+  const stats = summary._stats || {};
 
-  function walk(node) {
-    if (node.type === 'file') {
-      fileCount++;
-      if (!largestFile || node.size > largestFile.size) largestFile = node;
-    } else if (node.type === 'directory') {
-      dirCount++;
-      (node.children || []).forEach(walk);
-    }
+  document.getElementById('statFiles').textContent = (stats.totalFiles || 0).toLocaleString();
+  document.getElementById('statSize').textContent = formatBytes(summary.size || 0);
+  document.getElementById('statDirs').textContent = (stats.treeDirCount || 0).toLocaleString();
+  document.getElementById('statLargest').textContent = stats.largestFile ? stats.largestFile.name : '-';
+  document.getElementById('statSkipped').textContent = (stats.skippedDirs || 0).toLocaleString();
+
+  // Show verification status
+  if (stats.verified === false) {
+    console.warn('Scan verification failed: file count mismatch');
   }
-  walk(tree);
-
-  document.getElementById('statFiles').textContent = fileCount.toLocaleString();
-  document.getElementById('statSize').textContent = formatBytes(tree.size);
-  document.getElementById('statDirs').textContent = dirCount.toLocaleString();
-  document.getElementById('statLargest').textContent = largestFile ? largestFile.name : '-';
-  const skipped = (tree._stats && tree._stats.skippedDirs) || 0;
-  document.getElementById('statSkipped').textContent = skipped.toLocaleString();
 }
 
 // Filters
 async function applyFilters() {
-  if (!currentTree) {
+  if (!currentRoot) {
     alert('No hay datos para filtrar. Realice un escaneo primero.');
     return;
   }
@@ -309,7 +401,7 @@ async function applyFilters() {
 }
 
 function applyFiltersToTree() {
-  if (!currentTree) return;
+  if (!currentRoot) return;
   renderCurrentView();
 }
 
@@ -325,18 +417,17 @@ function createFilterManager(filters) {
       const filteredChildren = (node.children || [])
         .map(c => this.applyToTree(c))
         .filter(Boolean);
-      // Always keep empty directories and locked folders visible
-      const isEmptyDir = (!node.children || node.children.length === 0);
+      // Keep empty directories, locked folders and truncated aggregates visible
+      const noChildren = (!node.children || node.children.length === 0);
       const isLocked = node.locked === true;
-      if (filteredChildren.length === 0 && (isEmptyDir || isLocked)) {
-        // Keep if no restrictive filter is active, or if filtering by empty
+      if (filteredChildren.length === 0 && noChildren) {
         const restrictiveFilter = (filters.sizeMode && filters.sizeMode !== 'empty') ||
           (filters.minSize && filters.minSize > 0) ||
           (filters.maxSize !== undefined && filters.maxSize !== Infinity && filters.maxSize < 1) ||
           (filters.categories && filters.categories.length > 0) ||
           filters.ageDays;
-        if (!restrictiveFilter || filters.sizeMode === 'empty') {
-          return { ...node, children: [], size: 0, locked: isLocked };
+        if (!restrictiveFilter || filters.sizeMode === 'empty' || node._truncated || node.size > 0) {
+          return { ...node, children: [], size: node.size || 0, locked: isLocked };
         }
         return null;
       }
@@ -373,7 +464,7 @@ async function clearFilters() {
   document.getElementById('sizeFilter').value = 'all';
   document.getElementById('ageFilter').value = '';
   currentFilter = {};
-  if (currentTree) {
+  if (currentRoot) {
     renderCurrentView();
   }
 }
@@ -390,26 +481,50 @@ function switchView(view) {
   if (view === 'treemap') {
     treemapContainer.style.display = 'block';
     listContainer.style.display = 'none';
+    if (currentTreemapRaw) renderTreemapWithFilters();
+    else if (currentRoot) loadTreemap(currentRoot.path, []);
   } else {
     treemapContainer.style.display = 'none';
     listContainer.style.display = 'flex';
+    if (listView && listView.rootSummary) listView.refresh();
+    else if (currentRoot) listView.load(currentRoot.path, currentRoot._stats);
   }
+}
 
-  renderCurrentView();
+// Load a size-limited subtree from the server and render the treemap
+async function loadTreemap(nodePath, trail) {
+  try {
+    const res = await fetch(`/api/tree?path=${encodeURIComponent(nodePath)}&depth=2&maxNodes=5000`);
+    const data = await res.json();
+    if (data.success) {
+      currentTreemapRaw = data.node;
+      treemapTrail = trail || [];
+      renderTreemapWithFilters();
+    } else {
+      console.error('No se pudo cargar el treemap:', data.message);
+    }
+  } catch (err) {
+    console.error('Error loading treemap:', err);
+  }
+}
+
+function renderTreemapWithFilters() {
+  if (!currentTreemapRaw) return;
+  const fm = createFilterManager(currentFilter);
+  const filtered = fm.applyToTree(currentTreemapRaw);
+  treemap.render(filtered || currentTreemapRaw, treemapTrail);
+}
+
+async function loadListChildren(nodePath, navStack) {
+  if (listView) await listView.navigate(nodePath, navStack);
 }
 
 function renderCurrentView() {
-  if (!currentTree) return;
-
-  // Apply filters
-  const fm = createFilterManager(currentFilter);
-  const filtered = fm.applyToTree(currentTree);
-  const dataToRender = filtered || currentTree;
-
   if (currentView === 'treemap') {
-    treemap.render(dataToRender);
-  } else {
-    listView.render(dataToRender);
+    renderTreemapWithFilters();
+  } else if (listView) {
+    listView.setFilter(currentFilter);
+    listView.refresh();
   }
 }
 
@@ -643,7 +758,7 @@ function setupResize() {
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-      if (currentTree) {
+      if (currentRoot) {
         if (currentView === 'treemap') treemap.resize();
         else listView.resize();
       }

@@ -21,6 +21,20 @@ Borrador de proyecto realizado con IA, para fines educativos.
 - **Por capas**: Presentación, Lógica de aplicación, Acceso a sistema de archivos
 - **Patrones de diseño**: Observer (actualización de estado) y Strategy (filtrado)
 
+### Carga bajo demanda (escaneos de discos completos)
+
+Escanear un disco completo puede producir cientos de miles de archivos y un árbol
+de datos de cientos de MB. Para que la interfaz siga siendo rápida, el servidor
+conserva el árbol completo en memoria y el navegador solicita solo lo que necesita:
+
+- `GET /api/tree?path=...&depth=2&maxNodes=5000` → subárbol limitado para el treemap.
+- `GET /api/children?path=...` → hijos directos de una carpeta para la lista.
+- `GET /api/search?q=...` → búsqueda global paginada en todo el disco.
+- `GET /api/scan/status` → estado ligero (sin el árbol completo).
+
+Así, el WebSocket solo transmite progreso y un resumen del escaneo, nunca el árbol
+completo. Esto evita que el navegador se congele al analizar unidades enteras.
+
 ## Requisitos
 
 - Node.js 18+ 
@@ -29,7 +43,7 @@ Borrador de proyecto realizado con IA, para fines educativos.
 ## Instalación
 
 ```bash
-cd "DiskMap_prueba"
+cd "DiskLen prueba"
 npm install
 ```
 
@@ -59,6 +73,7 @@ disklen/
 │   └── js/
 │       ├── app.js         # Lógica principal
 │       ├── treemap.js     # Visualización D3.js
+│       ├── listview.js    # Vista de lista con barras de peso
 │       └── observer.js    # Observer frontend
 └── README.md
 ```
@@ -69,7 +84,11 @@ disklen/
 2. El navegador se abrirá automáticamente
 3. Selecciona una unidad o carpeta
 4. Haz clic en "Iniciar escaneo"
-5. Explora la visualización treemap
-6. Haz clic derecho sobre un archivo para ver opciones
+5. Explora el **Treemap** (clic en una carpeta para acercarte) o cambia a la **Lista**
+6. Usa la búsqueda global para encontrar archivos en todo el disco
+7. Haz clic derecho sobre un archivo para ver sus opciones
+
+> Las carpetas sin permisos se muestran con 🔒 en lugar de intentar elevar
+> privilegios. Las carpetas y archivos de 0 bytes también se incluyen en el análisis.
 
 

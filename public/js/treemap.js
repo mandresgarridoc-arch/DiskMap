@@ -53,13 +53,20 @@ class TreemapViz {
     this.currentData = null;
     this.rootNode = null;
     this.onFileAction = null;
-    this.zoomStack = [];
-    this.currentNode = null;
+    this.onNavigate = null;
+    this.trail = [];
+    this.scanRootPath = null;
+    this.scanRootName = null;
     this.totalSize = 0;
   }
 
-  render(data) {
+  render(data, trail = []) {
     this.currentData = data;
+    this.trail = Array.isArray(trail) ? trail : [];
+    if (this.trail.length === 0 && data) {
+      this.scanRootPath = data.path;
+      this.scanRootName = data.name;
+    }
     if (!data || !data.children || data.children.length === 0) {
       this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la visualización</p></div>';
       return;
@@ -93,16 +100,16 @@ class TreemapViz {
         const filteredChildren = (node.children || [])
           .map(filterTree)
           .filter(Boolean);
-        if (filteredChildren.length === 0) return null;
-        return { ...node, children: filteredChildren, size: filteredChildren.reduce((s, c) => s + (c.size || 0), 0) };
+        if (filteredChildren.length === 0) {
+          // Keep empty / truncated directories so their size is not lost
+          return { ...node, children: [] };
+        }
+        return { ...node, children: filteredChildren };
       }
       renderData = filterTree(data);
       if (!renderData) renderData = data;
     }
 
-    // Reset zoom
-    this.zoomStack = [];
-    this.currentNode = renderData;
     this._renderTreemap(renderData, totalFiles, totalFiles > 2000);
   }
 
@@ -121,33 +128,28 @@ class TreemapViz {
       this.container.appendChild(note);
     }
 
-    // Add zoom breadcrumb
-    if (this.zoomStack.length > 0) {
+    // Breadcrumb for the current zoom level
+    if (this.trail && this.trail.length > 0) {
       const breadcrumb = document.createElement('div');
-      breadcrumb.style.cssText = 'position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); padding:4px 10px; border-radius:6px; font-size:11px; z-index:10; display:flex; gap:4px; align-items:center; backdrop-filter:blur(4px);';
-      breadcrumb.innerHTML = `<span style="color:#94a3b8; cursor:pointer;" data-zoom="root">🏠 Raíz</span>`;
-      this.zoomStack.forEach((entry, idx) => {
-        breadcrumb.innerHTML += ` <span style="color:#64748b;">›</span> <span style="color:#3b82f6; cursor:pointer;" data-zoom="${idx}">${escapeHtml(entry.name)}</span>`;
+      breadcrumb.style.cssText = 'position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.75); padding:4px 10px; border-radius:6px; font-size:11px; z-index:10; display:flex; gap:4px; align-items:center; backdrop-filter:blur(4px); flex-wrap:wrap; max-width:calc(100% - 16px);';
+      breadcrumb.innerHTML = `<span style="color:#94a3b8; cursor:pointer;" data-nav="root">🏠 Raíz</span>`;
+      this.trail.forEach((entry, idx) => {
+        breadcrumb.innerHTML += ` <span style="color:#64748b;">›</span> <span style="color:#3b82f6; cursor:pointer;" data-nav="${idx}">${escapeHtml(entry.name)}</span>`;
       });
+      if (this.currentData) {
+        breadcrumb.innerHTML += ` <span style="color:#64748b;">›</span> <span style="color:#e2e8f0;">${escapeHtml(this.currentData.name)}</span>`;
+      }
       this.container.appendChild(breadcrumb);
 
-      breadcrumb.querySelectorAll('[data-zoom]').forEach(el => {
+      breadcrumb.querySelectorAll('[data-nav]').forEach(el => {
         el.addEventListener('click', () => {
-          const level = el.dataset.zoom;
+          if (!this.onNavigate) return;
+          const level = el.dataset.nav;
           if (level === 'root') {
-            this.zoomStack = [];
-            this.currentNode = this.currentData;
-            this._renderTreemap(this.currentData, totalFiles, isLimited);
+            this.onNavigate(this.scanRootPath, []);
           } else {
-            const idx = parseInt(level);
-            this.zoomStack = this.zoomStack.slice(0, idx + 1);
-            // Rebuild currentNode
-            this.currentNode = this.currentData;
-            for (const entry of this.zoomStack) {
-              const found = this.currentNode.children ? this.currentNode.children.find(c => c.name === entry.name) : null;
-              if (found) this.currentNode = found;
-            }
-            this._renderTreemap(this.currentNode, totalFiles, isLimited);
+            const idx = parseInt(level, 10);
+            this.onNavigate(this.trail[idx].path, this.trail.slice(0, idx));
           }
         });
       });
@@ -170,9 +172,10 @@ class TreemapViz {
       return;
     }
 
-    // Create hierarchy
+    // Create hierarchy. Directories without children (empty or truncated
+    // aggregates) count as leaves using their own size.
     const root = d3.hierarchy(data)
-      .sum(d => d.type === 'file' ? d.size : 0)
+      .sum(d => (d.type === 'file' || !d.children || d.children.length === 0) ? (d.size || 0) : 0)
       .sort((a, b) => b.value - a.value);
 
     // Treemap layout with better padding
@@ -197,6 +200,17 @@ class TreemapViz {
       .attr('stroke', 'rgba(255,255,255,0.1)')
       .attr('stroke-width', 1)
       .attr('rx', 4);
+
+    // Click on a directory group (background or label) to zoom into it
+    groups
+      .style('cursor', d => (d.data.children && d.data.children.length > 0) ? 'pointer' : 'default')
+      .on('click', (event, d) => {
+        event.stopPropagation();
+        if (d.data.type === 'directory' && d.data.children && d.data.children.length > 0 && this.onNavigate) {
+          const newTrail = (this.trail || []).concat([{ name: this.currentData.name, path: this.currentData.path }]);
+          this.onNavigate(d.data.path, newTrail);
+        }
+      });
 
     // Group labels
     groups.append('text')
@@ -243,11 +257,14 @@ class TreemapViz {
         this.showContextMenu(event, d.data);
       })
       .on('click', (event, d) => {
-        // If it's a directory with children, zoom in
+        // Aggregated "rest" node: nothing to open
+        if (d.data._aggregate) return;
+        // Directory with children: load and zoom into it (on demand)
         if (d.data.type === 'directory' && d.data.children && d.data.children.length > 0) {
-          this.zoomStack.push({ name: d.data.name, node: this.currentNode });
-          this.currentNode = d.data;
-          this._renderTreemap(d.data, totalFiles, isLimited);
+          if (this.onNavigate) {
+            const newTrail = (this.trail || []).concat([{ name: this.currentData.name, path: this.currentData.path }]);
+            this.onNavigate(d.data.path, newTrail);
+          }
         } else if (this.onFileAction) {
           this.onFileAction('info', d.data);
         }
@@ -350,7 +367,7 @@ class TreemapViz {
       if (node.type === 'file') cats.add(node.category || 'other');
       else if (node.children) node.children.forEach(collect);
     }
-    if (this.currentNode) collect(this.currentNode);
+    if (this.currentData) collect(this.currentData);
 
     if (cats.size === 0) return;
 
@@ -366,11 +383,11 @@ class TreemapViz {
   }
 
   update(data) {
-    this.render(data);
+    this.render(data, this.trail || []);
   }
 
   resize() {
-    if (this.currentData) this.render(this.currentData);
+    if (this.currentData) this.render(this.currentData, this.trail || []);
   }
 }
 

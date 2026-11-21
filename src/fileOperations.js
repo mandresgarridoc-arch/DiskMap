@@ -7,7 +7,8 @@ const { exec } = require('child_process');
 
 let trashModule = null;
 try {
-  trashModule = require('trash');
+  const trashExport = require('trash');
+  trashModule = trashExport.default || trashExport;
 } catch (e) {
   trashModule = null;
 }
@@ -18,20 +19,27 @@ class FileOperations {
     try {
       if (trashModule) {
         await trashModule(filePath);
-        return { success: true, message: 'Moved to trash' };
+        return { success: true, message: 'Movido a la papelera' };
       }
       // Fallback: use shell command on Windows
       if (process.platform === 'win32') {
         return new Promise((resolve) => {
-          // Use PowerShell to move to recycle bin
-          const cmd = `powershell -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('${filePath.replace(/'/g, "''")}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
+          const fs_stat = require('fs').statSync(filePath);
+          const isDir = fs_stat.isDirectory();
+          const escapedPath = filePath.replace(/'/g, "''");
+          let cmd;
+          if (isDir) {
+            cmd = `powershell -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('${escapedPath}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
+          } else {
+            cmd = `powershell -Command "Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile('${escapedPath}', 'OnlyErrorDialogs', 'SendToRecycleBin')"`;
+          }
           exec(cmd, (err) => {
             if (err) resolve({ success: false, message: err.message });
-            else resolve({ success: true, message: 'Moved to recycle bin' });
+            else resolve({ success: true, message: 'Movido a la papelera' });
           });
         });
       }
-      return { success: false, message: 'Trash module not available' };
+      return { success: false, message: 'Módulo de papelera no disponible' };
     } catch (err) {
       return { success: false, message: err.message };
     }

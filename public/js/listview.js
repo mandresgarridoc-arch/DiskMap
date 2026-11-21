@@ -1,18 +1,20 @@
 // public/js/listview.js
-// List view with colored size bars, search, pagination and compact mode
+// List view with colored size bars, search, pagination and compact mode.
+// Data is loaded on demand from the server (/api/children, /api/search),
+// so it works with whole-drive scans without transferring the full tree.
 
 // Utility functions
 function escapeHtml(text) {
   const div = document.createElement('div');
-  div.textContent = text;
+  div.textContent = text == null ? '' : String(text);
   return div.innerHTML;
 }
 
 function formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
+  if (!bytes) return '0 B';
   const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
@@ -26,9 +28,9 @@ function getSizeColor(ratio) {
 class ListView {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
-    this.rootData = null;
-    this.currentNode = null;
-    this.navStack = [];
+    this.rootSummary = null;   // { path }
+    this.currentNode = null;   // { name, path, size, type }
+    this.navStack = [];        // ancestors: [{ name, path }]
     this.sortBy = 'name';
     this.sortDir = 'asc';
     this.onFileAction = null;
@@ -38,111 +40,151 @@ class ListView {
     // Search & pagination
     this.searchQuery = '';
     this.globalSearchQuery = '';
+    this.globalResults = null;
+    this.globalLimited = false;
     this.pageSize = 100;
     this.currentPage = 1;
     this.compactMode = false;
-    this.allItems = []; // Flattened items for current node
+    this.items = [];           // immediate children of the current node
+    this.filter = {};
+    this.loading = false;
   }
 
-  render(data) {
-    if (data && data._stats) {
-      this.stats = data._stats;
-    }
-    this.rootData = data;
-    this.currentNode = data;
+  _clearSearchInputs() {
+    const local = document.getElementById('listSearch');
+    if (local) local.value = '';
+    const global = document.getElementById('globalSearch');
+    if (global) global.value = '';
+  }
+
+  // Load the root directory of a completed scan
+  async load(rootPath, stats) {
+    this.stats = stats || null;
+    this.rootSummary = { path: rootPath };
     this.navStack = [];
-    this.currentPage = 1;
     this.searchQuery = '';
-    this._renderCurrentNode();
+    this.globalSearchQuery = '';
+    this.globalResults = null;
+    this.globalLimited = false;
+    this.currentPage = 1;
+    this._clearSearchInputs();
+    await this.navigate(rootPath, []);
   }
 
-  _getItems(node) {
-    if (!node || !node.children) return [];
-    return node.children.map(child => ({
-      name: child.name,
-      path: child.path,
-      size: child.size || 0,
-      type: child.type,
-      category: child.category,
-      children: child.children,
-      modified: child.modified,
-      locked: child.locked === true
-    }));
+  // Load the immediate children of a directory from the server
+  async navigate(nodePath, navStack) {
+    this.loading = true;
+    this.searchQuery = '';
+    this.globalSearchQuery = '';
+    this.globalResults = null;
+    this.globalLimited = false;
+    this.currentPage = 1;
+    this._clearSearchInputs();
+
+    try {
+      const res = await fetch(`/api/children?path=${encodeURIComponent(nodePath)}`);
+      const data = await res.json();
+      if (!data.success) {
+        this.loading = false;
+        this.container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>No se pudo abrir la carpeta</h3><p>${escapeHtml(data.message || '')}</p></div>`;
+        return;
+      }
+      this.currentNode = data.node;
+      this.navStack = navStack || [];
+      this.items = data.children || [];
+      this.loading = false;
+      this._renderCurrentNode();
+    } catch (err) {
+      this.loading = false;
+      this.container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>Error de conexión</h3><p>${escapeHtml(err.message)}</p></div>`;
+    }
   }
 
-  _flattenTree(node, result = []) {
-    if (!node) return result;
-    if (node.type === 'file' || node.type === 'directory') {
-      if (node.path && node.name) {
-        result.push({
-          name: node.name,
-          path: node.path,
-          size: node.size || 0,
-          type: node.type,
-          category: node.category,
-          children: node.children,
-          modified: node.modified,
-          locked: node.locked === true
-        });
+  reset() {
+    this.rootSummary = null;
+    this.currentNode = null;
+    this.navStack = [];
+    this.items = [];
+    this.stats = null;
+    this.searchQuery = '';
+    this.globalSearchQuery = '';
+    this.globalResults = null;
+    this.currentPage = 1;
+    this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
+    this._renderPagination(0);
+  }
+
+  setFilter(filters) {
+    this.filter = filters || {};
+  }
+
+  _matchesFilter(item) {
+    const f = this.filter || {};
+    if (f.categories && f.categories.length > 0 && item.type === 'file') {
+      if (!f.categories.includes(item.category)) return false;
+    }
+    if (f.sizeMode === 'empty') {
+      if ((item.size || 0) !== 0) return false;
+    }
+    if (f.minSize && (item.size || 0) < f.minSize) return false;
+    if (f.maxSize !== undefined && (item.size || 0) > f.maxSize) return false;
+    if (f.ageDays && item.type === 'file' && item.modified) {
+      const threshold = Date.now() - (f.ageDays * 24 * 60 * 60 * 1000);
+      if (f.ageMode === 'older') {
+        if (!(item.modified < threshold)) return false;
+      } else {
+        if (!(item.modified >= threshold)) return false;
       }
     }
-    if (node.children) {
-      for (const child of node.children) {
-        this._flattenTree(child, result);
-      }
-    }
-    return result;
+    return true;
   }
 
   _filterItems(items) {
-    let filtered = items;
-    // Local search
-    if (this.searchQuery) {
-      const q = this.searchQuery.toLowerCase();
-      filtered = filtered.filter(item => item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q));
-    }
-    // Global search
-    if (this.globalSearchQuery) {
-      const q = this.globalSearchQuery.toLowerCase();
-      filtered = filtered.filter(item => item.name.toLowerCase().includes(q) || item.path.toLowerCase().includes(q));
+    let filtered = items.filter(item => this._matchesFilter(item));
+    const query = (this.searchQuery || '').toLowerCase();
+    if (query) {
+      filtered = filtered.filter(item =>
+        (item.name || '').toLowerCase().includes(query) ||
+        (item.path || '').toLowerCase().includes(query)
+      );
     }
     return filtered;
   }
 
   _sortItems(items) {
-    return items.sort((a, b) => {
-      let va = a[this.sortBy], vb = b[this.sortBy];
-      if (typeof va === 'string') {
-        va = va.toLowerCase(); vb = vb.toLowerCase();
+    return items.slice().sort((a, b) => {
+      let va = a[this.sortBy];
+      let vb = b[this.sortBy];
+      if (this.sortBy === 'name') {
+        va = (va || '').toLowerCase();
+        vb = (vb || '').toLowerCase();
         return this.sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
       }
+      va = va || 0;
+      vb = vb || 0;
       return this.sortDir === 'asc' ? va - vb : vb - va;
     });
   }
 
   _renderCurrentNode() {
-    if (!this.rootData) {
+    if (!this.rootSummary || !this.currentNode) {
       this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
       this._renderPagination(0);
       return;
     }
 
-    // Global search: flatten entire tree
-    if (this.globalSearchQuery) {
-      this.allItems = this._flattenTree(this.rootData);
-    } else {
-      const node = this.currentNode;
-      if (!node) {
-        this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
-        this._renderPagination(0);
-        return;
-      }
-      this.allItems = this._getItems(node);
+    if (this.loading) {
+      this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><h3>Cargando…</h3></div>';
+      this._renderPagination(0);
+      return;
     }
 
-    this.maxSize = Math.max(...this.allItems.map(i => i.size), 1);
+    const isGlobal = !!this.globalSearchQuery;
+    const sourceItems = isGlobal ? (this.globalResults || []) : this.items;
 
-    let filtered = this._filterItems(this.allItems);
+    this.maxSize = Math.max(...sourceItems.map(i => i.size || 0), 1);
+
+    let filtered = this._filterItems(sourceItems);
     filtered = this._sortItems(filtered);
 
     const totalItems = filtered.length;
@@ -154,16 +196,19 @@ class ListView {
     const endIdx = this.pageSize > 0 ? startIdx + this.pageSize : filtered.length;
     const pageItems = filtered.slice(startIdx, endIdx);
 
-    if (pageItems.length === 0 && this.allItems.length === 0) {
-      this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin datos</h3><p>Escanee una carpeta para ver la lista</p></div>';
+    if (pageItems.length === 0) {
+      const msg = isGlobal
+        ? 'No se encontraron coincidencias'
+        : (sourceItems.length === 0 ? 'Esta carpeta está vacía' : 'Ningún elemento coincide con el filtro');
+      this.container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin resultados</h3><p>${msg}</p></div>`;
       this._renderPagination(0);
       return;
     }
 
     // Breadcrumb or global search header
     let headerHtml = '';
-    if (this.globalSearchQuery) {
-      headerHtml = `<div class="breadcrumb"><span style="color:var(--accent);">🌐 Resultados de búsqueda global: "${escapeHtml(this.globalSearchQuery)}"</span> <span style="color:var(--text-secondary); margin-left:8px;">(${filtered.length} resultados)</span></div>`;
+    if (isGlobal) {
+      headerHtml = `<div class="breadcrumb"><span style="color:var(--accent);">🌐 Resultados de búsqueda global: "${escapeHtml(this.globalSearchQuery)}"</span> <span style="color:var(--text-secondary); margin-left:8px;">(${filtered.length}${this.globalLimited ? '+' : ''} resultados)</span></div>`;
     } else {
       headerHtml = '<div class="breadcrumb">';
       headerHtml += `<span class="breadcrumb-item" data-level="root">🏠 Raíz</span>`;
@@ -171,6 +216,10 @@ class ListView {
         headerHtml += `<span class="breadcrumb-sep">›</span>`;
         headerHtml += `<span class="breadcrumb-item" data-level="${idx}">${escapeHtml(entry.name)}</span>`;
       });
+      if (this.currentNode) {
+        headerHtml += `<span class="breadcrumb-sep">›</span>`;
+        headerHtml += `<span style="color:var(--text-primary);">${escapeHtml(this.currentNode.name)}</span>`;
+      }
       headerHtml += '</div>';
     }
 
@@ -187,20 +236,23 @@ class ListView {
 
     for (const item of pageItems) {
       const isLocked = item.locked === true;
-      const ratio = item.size / this.maxSize;
+      const ratio = (item.size || 0) / this.maxSize;
       const barColor = isLocked ? '#64748b' : getSizeColor(ratio);
       const barWidth = isLocked ? 100 : Math.max(2, ratio * 100);
       const icon = isLocked ? '🔒' : (item.type === 'directory' ? '📁' : this._getFileIcon(item.category));
       const percent = isLocked ? '—' : (ratio * 100).toFixed(1);
       const isDir = item.type === 'directory';
+      const childCount = typeof item.childCount === 'number'
+        ? item.childCount
+        : (item.children ? item.children.length : 0);
 
       html += `
-        <div class="list-row ${isLocked ? 'locked' : ''}" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" data-size="${item.size}" data-type="${item.type}" data-isdir="${isDir}" data-locked="${isLocked}">
+        <div class="list-row ${isLocked ? 'locked' : ''}" data-path="${escapeHtml(item.path)}" data-name="${escapeHtml(item.name)}" data-size="${item.size || 0}" data-type="${item.type}" data-isdir="${isDir}" data-locked="${isLocked}">
           <div class="col-name">
             <span class="item-icon">${icon}</span>
             <div style="overflow:hidden;">
               <div class="item-name" title="${escapeHtml(item.path)}">${escapeHtml(item.name)}</div>
-              ${isLocked ? `<div class="item-path" style="color:var(--warning);">Sin permisos de lectura</div>` : (isDir ? `<div class="item-path">${item.children ? item.children.length : 0} elementos</div>` : `<div class="item-path">${escapeHtml(item.category)}</div>`)}
+              ${isLocked ? `<div class="item-path" style="color:var(--warning);">Sin permisos de lectura</div>` : (isDir ? `<div class="item-path">${childCount} elementos</div>` : `<div class="item-path">${escapeHtml(item.category)}</div>`)}
             </div>
           </div>
           <div class="col-size">${isLocked ? '—' : formatBytes(item.size)}</div>
@@ -216,10 +268,10 @@ class ListView {
 
     if (this.stats) {
       const shown = pageItems.length;
-      const total = this.allItems.length;
+      const total = sourceItems.length;
       html += `
         <div class="list-footer">
-          <span>📊 ${this.stats.totalFiles.toLocaleString()} archivos | ${formatBytes(this.stats.totalSize)} total | Mostrando ${shown} de ${total} en esta vista</span>
+          <span>📊 ${(this.stats.totalFiles || 0).toLocaleString()} archivos | ${formatBytes(this.stats.totalSize || 0)} total | Mostrando ${shown} de ${total} en esta vista</span>
           ${this.stats.skippedDirs > 0 ? `<span style="color:var(--warning); margin-left:16px;">⚠️ ${this.stats.skippedDirs} carpetas sin acceso</span>` : ''}
         </div>
       `;
@@ -233,22 +285,21 @@ class ListView {
       row.addEventListener('click', () => {
         const isDir = row.dataset.isdir === 'true';
         const isLocked = row.dataset.locked === 'true';
+        const itemPath = row.dataset.path;
+        const itemName = row.dataset.name;
+
         if (isLocked) {
-          if (this.onFileAction) this.onFileAction('info', { path: row.dataset.path, name: row.dataset.name, size: 0, type: 'directory', locked: true });
+          if (this.onFileAction) this.onFileAction('info', { path: itemPath, name: itemName, size: 0, type: 'directory', locked: true });
           return;
         }
         if (isDir) {
-          const item = this.allItems.find(i => i.path === row.dataset.path);
-          if (item && item.children && item.children.length > 0) {
-            this.navStack.push({ name: row.dataset.name, node: this.currentNode });
-            this.currentNode = item;
-            this.currentPage = 1;
-            this._renderCurrentNode();
-            return;
-          }
+          const parent = this.currentNode;
+          const newStack = this.navStack.concat([{ name: parent.name, path: parent.path }]);
+          this.navigate(itemPath, newStack);
+          return;
         }
         if (this.onFileAction) {
-          this.onFileAction('info', { path: row.dataset.path, name: row.dataset.name, size: parseInt(row.dataset.size), type: row.dataset.type });
+          this.onFileAction('info', { path: itemPath, name: itemName, size: parseInt(row.dataset.size, 10), type: row.dataset.type });
         }
       });
       row.addEventListener('contextmenu', (e) => {
@@ -280,26 +331,20 @@ class ListView {
       header.style.cursor = 'pointer';
     });
 
-    // Breadcrumb navigation (only when not in global search)
-    if (!this.globalSearchQuery) {
+    // Breadcrumb navigation
+    if (!isGlobal) {
       this.container.querySelectorAll('.breadcrumb-item').forEach(item => {
         item.addEventListener('click', () => {
           const level = item.dataset.level;
           if (level === 'root') {
-            this.currentNode = this.rootData;
-            this.navStack = [];
+            if (this.rootSummary) this.navigate(this.rootSummary.path, []);
           } else {
-            const idx = parseInt(level);
-            this.navStack = this.navStack.slice(0, idx + 1);
-            this.currentNode = this.rootData;
-            for (let i = 0; i <= idx; i++) {
-              const targetName = this.navStack[i].name;
-              const found = this.currentNode.children ? this.currentNode.children.find(c => c.name === targetName) : null;
-              if (found) this.currentNode = found;
+            const idx = parseInt(level, 10);
+            const target = this.navStack[idx];
+            if (target) {
+              this.navigate(target.path, this.navStack.slice(0, idx));
             }
           }
-          this.currentPage = 1;
-          this._renderCurrentNode();
         });
       });
     }
@@ -326,7 +371,7 @@ class ListView {
     container.innerHTML = html;
     container.querySelectorAll('.page-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        const page = parseInt(btn.dataset.page);
+        const page = parseInt(btn.dataset.page, 10);
         if (page >= 1 && page <= totalPages) {
           this.currentPage = page;
           this._renderCurrentNode();
@@ -343,8 +388,12 @@ class ListView {
     return icons[category] || '📎';
   }
 
-  update(data) {
-    this.render(data);
+  update() {
+    this.refresh();
+  }
+
+  refresh() {
+    this._renderCurrentNode();
   }
 
   resize() {
@@ -362,19 +411,42 @@ class ListView {
   }
 
   setSearch(query) {
-    this.searchQuery = query;
+    this.searchQuery = query || '';
     this.currentPage = 1;
     this._renderCurrentNode();
   }
 
-  setGlobalSearch(query) {
-    this.globalSearchQuery = query;
+  async setGlobalSearch(query) {
+    this.globalSearchQuery = query || '';
     this.currentPage = 1;
-    this._renderCurrentNode();
+
+    if (!this.globalSearchQuery) {
+      this.globalResults = null;
+      this.globalLimited = false;
+      this._renderCurrentNode();
+      return;
+    }
+
+    this.container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⏳</div><h3>Buscando…</h3></div>';
+    this._renderPagination(0);
+
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(this.globalSearchQuery)}&limit=5000`);
+      const data = await res.json();
+      if (data.success) {
+        this.globalResults = data.results || [];
+        this.globalLimited = !!data.limited;
+        this._renderCurrentNode();
+      } else {
+        this.container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>Error de búsqueda</h3><p>${escapeHtml(data.message || '')}</p></div>`;
+      }
+    } catch (err) {
+      this.container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>Error de conexión</h3><p>${escapeHtml(err.message)}</p></div>`;
+    }
   }
 
   setPageSize(size) {
-    this.pageSize = parseInt(size);
+    this.pageSize = parseInt(size, 10);
     this.currentPage = 1;
     this._renderCurrentNode();
   }

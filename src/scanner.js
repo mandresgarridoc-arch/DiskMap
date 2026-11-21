@@ -33,6 +33,7 @@ class Scanner {
     this.skippedDirs = 0;
     this.lockedFolders = [];  // Carpetas sin acceso con su ruta y motivo
     this.errors = [];
+    this.largestFile = null;
   }
 
   cancel() {
@@ -46,6 +47,7 @@ class Scanner {
     this.skippedDirs = 0;
     this.lockedFolders = [];
     this.errors = [];
+    this.largestFile = null;
   }
 
   async scan(targetPath, onProgress) {
@@ -62,14 +64,36 @@ class Scanner {
     await this._scanDir(targetPath, root, onProgress);
     // Calculate directory sizes bottom-up
     this._calcSizes(root);
+
+    // Verify file count matches the tree
+    let treeFileCount = 0;
+    let treeDirCount = 0;
+    const countNodes = (node) => {
+      if (node.type === 'file') treeFileCount++;
+      else if (node.type === 'directory') {
+        treeDirCount++;
+        (node.children || []).forEach(countNodes);
+      }
+    };
+    countNodes(root);
+
     // Attach scan stats (incluyendo carpetas bloqueadas)
     root._stats = {
       totalFiles: this.totalFiles,
       totalSize: this.totalSize,
       skippedDirs: this.skippedDirs,
       lockedFolders: this.lockedFolders,
-      errors: this.errors
+      errors: this.errors,
+      treeFileCount: treeFileCount,
+      treeDirCount: treeDirCount,
+      largestFile: this.largestFile,
+      verified: treeFileCount === this.totalFiles
     };
+
+    if (treeFileCount !== this.totalFiles) {
+      console.warn(`Scan count mismatch: counter=${this.totalFiles}, tree=${treeFileCount}`);
+    }
+
     return root;
   }
 
@@ -100,6 +124,11 @@ class Scanner {
 
       const fullPath = path.join(dirPath, entry.name);
 
+      // Skip symbolic links to avoid infinite loops and non-deterministic results
+      if (entry.isSymbolicLink()) {
+        continue;
+      }
+
       if (entry.isDirectory()) {
         const childNode = {
           name: entry.name,
@@ -116,7 +145,15 @@ class Scanner {
         try {
           stat = await fs.promises.stat(fullPath);
         } catch (err) {
-          continue;
+          // Retry once after a short delay (file might be locked temporarily)
+          try {
+            await new Promise(resolve => setTimeout(resolve, 50));
+            stat = await fs.promises.stat(fullPath);
+          } catch (retryErr) {
+            // Skip file if still inaccessible
+            this.errors.push({ path: fullPath, error: retryErr.code || retryErr.message });
+            continue;
+          }
         }
         const fileNode = {
           name: entry.name,
@@ -130,6 +167,10 @@ class Scanner {
         node.children.push(fileNode);
         this.totalFiles++;
         this.totalSize += stat.size;
+
+        if (!this.largestFile || stat.size > this.largestFile.size) {
+          this.largestFile = { name: entry.name, path: fullPath, size: stat.size };
+        }
 
         if (onProgress && this.totalFiles % 50 === 0) {
           onProgress({

@@ -1,6 +1,21 @@
 // public/js/listview.js
 // List view with colored size bars, search, pagination and compact mode
 
+// Utility functions
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 function getSizeColor(ratio) {
   if (ratio < 0.25) return '#22c55e';
   if (ratio < 0.5) return '#84cc16';

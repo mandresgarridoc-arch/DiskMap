@@ -1,6 +1,21 @@
 // public/js/app.js
 // Main application logic - Presentation Layer
 
+// Utility functions
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 // State
 let ws = null;
 let currentTree = null;
@@ -355,7 +370,7 @@ function createFilterManager(filters) {
 
 async function clearFilters() {
   document.querySelectorAll('.cat-filter').forEach(cb => cb.checked = false);
-  document.getElementById('sizeFilter').value = '0';
+  document.getElementById('sizeFilter').value = 'all';
   document.getElementById('ageFilter').value = '';
   currentFilter = {};
   if (currentTree) {

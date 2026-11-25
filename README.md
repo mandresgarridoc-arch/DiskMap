@@ -117,6 +117,11 @@ Si tienes el archivo `package-lock.json` y quieres una instalación reproducible
 npm ci
 ```
 
+> **¿Y un `requirements.txt`?** Ese formato es de Python. En Node.js el
+> equivalente ya está en el proyecto: `package.json` declara las dependencias
+> (`express`, `ws`, `trash`) y `package-lock.json` fija las versiones exactas.
+> `npm install` lee ambos archivos e instala todo; no hay que crear nada más.
+
 **Windows — si PowerShell bloquea `npm.ps1`:**
 
 ```powershell
@@ -132,6 +137,31 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ---
 
 ## 4. Ejecutar el programa
+
+### Instalación y arranque en un solo paso
+
+El proyecto incluye scripts que verifican Node, instalan las dependencias si
+faltan y arrancan el servidor:
+
+**Windows** — doble clic en `iniciar.bat`, o desde la terminal:
+
+```powershell
+.\iniciar.bat
+```
+
+**Linux / macOS:**
+
+```bash
+chmod +x iniciar.sh   # solo la primera vez
+./iniciar.sh
+```
+
+Si Node.js no está instalado, el script lo indica y se detiene sin dejar nada a
+medias.
+
+### Ejecución manual
+
+Si prefieres hacerlo paso a paso:
 
 ```bash
 npm start
@@ -254,6 +284,8 @@ servidor.
 DiskMap/
 ├── package.json
 ├── package-lock.json
+├── iniciar.bat            # Instala y arranca en Windows (doble clic)
+├── iniciar.sh             # Instala y arranca en Linux/macOS
 ├── server.js              # Servidor Express + WebSocket
 ├── src/
 │   ├── scanner.js         # Escaneo recursivo del sistema de archivos

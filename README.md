@@ -83,7 +83,7 @@ Elige **una** de las dos opciones.
 ### Opción A — Clonar con Git
 
 ```bash
-git clone https://github.com/mandresgarrido-arch/DiskMap.git
+git clone https://github.com/mandresgarridoc-arch/DiskMap.git
 cd DiskMap
 ```
 

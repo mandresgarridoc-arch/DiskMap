@@ -1,5 +1,5 @@
 // server.js
-// DiskLen - Modern web-based disk space analyzer
+// DiskMap - Modern web-based disk space analyzer
 // Backend: Express + WebSocket (client-server architecture with layered design)
 
 const express = require('express');
@@ -437,7 +437,7 @@ server.listen(PORT, '127.0.0.1', () => {
   const actualPort = server.address().port;
   console.log('');
   console.log('  ╔══════════════════════════════════════════╗');
-  console.log('  ║            DiskLen - Disk Analyzer         ║');
+  console.log('  ║            DiskMap - Disk Analyzer         ║');
   console.log('  ╠══════════════════════════════════════════╣');
   console.log(`  ║  Server running at: http://localhost:${actualPort}  ║`);
   console.log('  ║  Press Ctrl+C to stop                     ║');

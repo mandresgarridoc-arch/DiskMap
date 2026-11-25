@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DiskMap — Presentación</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --bg2: #0f172a;
+    --panel: #111c33;
+    --border: #1e3a5f;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --blue: #3b82f6;
+    --green: #22c55e;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --violet: #8b5cf6;
+    --cyan: #06b6d4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
+  body {
+    background: radial-gradient(1200px 700px at 15% 0%, #12213d 0%, var(--bg) 55%, #070b14 100%);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .progress {
+    position: fixed; top: 0; left: 0; height: 4px; width: 0%;
+    background: linear-gradient(90deg, var(--blue), var(--green));
+    transition: width .25s ease; z-index: 50;
+  }
+  .deck { position: relative; width: 100vw; height: 100vh; }
+  .slide {
+    position: absolute; inset: 0;
+    display: none; flex-direction: column; justify-content: center;
+    padding: 6vh 7vw;
+  }
+  .slide.active { display: flex; animation: fade .28s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+  h1 { font-size: clamp(2.2rem, 5.2vw, 4.2rem); margin: 0 0 .4rem; letter-spacing: -.02em; line-height: 1.05; }
+  h2 { font-size: clamp(1.5rem, 3.1vw, 2.4rem); margin: 0 0 1.2rem; color: #bfdbfe; letter-spacing: -.01em; }
+  h3 { font-size: clamp(1rem, 1.5vw, 1.25rem); margin: 0 0 .5rem; color: #dbeafe; }
+  p { font-size: clamp(.95rem, 1.35vw, 1.15rem); line-height: 1.5; color: var(--muted); margin: .4rem 0; }
+  .lead { font-size: clamp(1.05rem, 1.7vw, 1.45rem); color: #cbd5e1; max-width: 60ch; }
+  .accent { color: var(--blue); }
+  .green { color: var(--green); }
+  .amber { color: var(--amber); }
+  .red { color: var(--red); }
+  .muted { color: var(--muted); }
+  .dim { color: var(--dim); }
+  .big { font-size: clamp(2.4rem, 6vw, 4.6rem); font-weight: 800; line-height: 1; letter-spacing: -.03em; }
+  .kicker { text-transform: uppercase; letter-spacing: .18em; font-size: .72rem; color: var(--blue); font-weight: 700; margin-bottom: .8rem; }
+
+  .grid { display: grid; gap: 1rem; }
+  .cards { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .two { grid-template-columns: 1fr 1fr; gap: 1.6rem; }
+  .three { grid-template-columns: repeat(3, 1fr); }
+  .card {
+    background: linear-gradient(180deg, rgba(23,37,64,.85), rgba(15,23,42,.85));
+    border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.1rem;
+  }
+  .card p { margin: .35rem 0 0; font-size: clamp(.82rem, 1.1vw, .98rem); }
+  .card .num { font-size: 1.5rem; font-weight: 800; color: var(--blue); }
+  .pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.35);
+    color: #bfdbfe; border-radius: 999px; padding: .35rem .75rem;
+    font-size: clamp(.75rem, 1vw, .9rem); margin: .2rem .25rem .2rem 0;
+  }
+  .pill.green { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.35); color: #bbf7d0; }
+  .pill.amber { background: rgba(245,158,11,.12); border-color: rgba(245,158,11,.35); color: #fde68a; }
+  .pill.red { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.35); color: #fecaca; }
+
+  table { width: 100%; border-collapse: collapse; font-size: clamp(.72rem, 1.05vw, .95rem); }
+  th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid rgba(30,58,95,.7); vertical-align: top; }
+  th { color: #bfdbfe; font-size: .78em; text-transform: uppercase; letter-spacing: .06em; }
+  td { color: #cbd5e1; }
+  tr:last-child td { border-bottom: none; }
+
+  pre {
+    background: #0a1222; border: 1px solid var(--border); border-radius: 12px;
+    padding: .9rem 1rem; overflow: auto; color: #cbd5e1;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: clamp(.65rem, .95vw, .85rem);
+    line-height: 1.45; margin: .4rem 0;
+  }
+  code { font-family: "Cascadia Code", Consolas, monospace; color: #93c5fd; }
+
+  .diagram { display: flex; align-items: stretch; gap: .6rem; flex-wrap: wrap; }
+  .node {
+    flex: 1; min-width: 130px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: .8rem .9rem; text-align: center;
+  }
+  .node strong { display: block; color: #e2e8f0; font-size: clamp(.8rem, 1.1vw, .98rem); }
+  .node span { color: var(--muted); font-size: clamp(.68rem, .9vw, .8rem); }
+  .arrow { display: flex; align-items: center; color: var(--dim); font-size: 1.4rem; }
+  .layers { display: grid; gap: .5rem; }
+  .layer {
+    border: 1px solid var(--border); border-radius: 10px; padding: .6rem .9rem;
+    background: rgba(17,28,51,.7); display: flex; justify-content: space-between; gap: 1rem;
+  }
+  .layer b { color: #dbeafe; font-size: .95rem; }
+  .layer span { color: var(--muted); font-size: .85rem; }
+
+  .swatches { display: flex; gap: .6rem; flex-wrap: wrap; margin-top: .6rem; }
+  .swatch { width: 58px; height: 58px; border-radius: 12px; border: 1px solid rgba(255,255,255,.12); }
+  .swatch small { display: block; margin-top: 64px; color: var(--muted); font-size: .62rem; white-space: nowrap; }
+
+  .footer-note { position: absolute; left: 7vw; right: 7vw; bottom: 3.2vh; color: var(--dim); font-size: clamp(.65rem, .9vw, .8rem); }
+  .counter { position: fixed; bottom: 1rem; right: 1.4rem; color: var(--dim); font-size: .8rem; z-index: 60; }
+  .hint { position: fixed; bottom: 1rem; left: 1.4rem; color: #334155; font-size: .72rem; z-index: 60; }
+  .nav {
+    position: fixed; bottom: .8rem; left: 50%; transform: translateX(-50%);
+    display: flex; gap: .5rem; z-index: 60;
+  }
+  .nav button {
+    background: #16233d; color: #cbd5e1; border: 1px solid var(--border);
+    border-radius: 8px; padding: .35rem .7rem; cursor: pointer; font-size: .8rem;
+  }
+  .nav button:hover { background: #1d2f52; }
+  .title-wrap { display: flex; flex-direction: column; justify-content: center; height: 100%; }
+  .logo-badge {
+    width: 92px; height: 92px; border-radius: 24px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, rgba(59,130,246,.25), rgba(34,197,94,.18));
+    border: 1px solid rgba(59,130,246,.45); font-size: 3rem; margin-bottom: 1.2rem;
+  }
+  .hr { height: 1px; background: linear-gradient(90deg, rgba(59,130,246,.6), transparent); margin: 1.2rem 0; }
+  .metric-row { display: flex; gap: 2.5rem; flex-wrap: wrap; margin-top: 1rem; }
+  .metric .value { font-size: clamp(1.8rem, 3.4vw, 3rem); font-weight: 800; line-height: 1; }
+  .metric .label { color: var(--muted); font-size: .8rem; margin-top: .3rem; }
+
+  @media (max-width: 900px) {
+    .two, .three { grid-template-columns: 1fr; }
+    .slide { padding: 5vh 5vw; }
+    table { font-size: .68rem; }
+  }
+
+  /* Exportación a PDF: una diapositiva por página */
+  @media print {
+    @page { size: 16in 9in; margin: 0; }
+    html, body { height: auto; overflow: visible; background: #0b1120; }
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .deck { height: auto; }
+    .slide {
+      display: flex !important;
+      position: relative;
+      inset: auto;
+      width: 16in;
+      height: 9in;
+      padding: 0.6in 0.9in;
+      break-after: page;
+      page-break-after: always;
+      animation: none;
+    }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .progress, .counter, .hint, .nav { display: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<div class="deck" id="deck">
+
+  <!-- 1. Portada -->
+  <section class="slide active">
+    <div class="title-wrap">
+      <div class="logo-badge">💾</div>
+      <h1>DiskMap</h1>
+      <p class="lead">Analizador y visualizador de almacenamiento local.</p>
+      <div class="hr"></div>
+      <p><strong class="accent">“Ve tu disco. Libera tu espacio.”</strong></p>
+      <p class="dim">Ingeniería de Software — Evaluación 2<br>Iñaki Miranda · Salvador Castillo · Mauricio Garrido</p>
+    </div>
+  </section>
+
+  <!-- 2. Problema -->
+  <section class="slide">
+    <div class="kicker">El problema</div>
+    <h2>Sabemos que el disco está lleno.<br>No sabemos por qué.</h2>
+    <div class="grid cards">
+      <div class="card"><div class="num">01</div><h3>Falta de visibilidad</h3><p>El explorador obliga a revisar carpeta por carpeta. Es lento y no muestra proporciones.</p></div>
+      <div class="card"><div class="num">02</div><h3>Herramientas antiguas</h3><p>WinDirStat tiene una interfaz desactualizada y puede ser lento en SSD grandes. ncdu es solo terminal.</p></div>
+      <div class="card"><div class="num">03</div><h3>Decisiones inseguras</h3><p>Sin información clara, el usuario borra a ciegas o no libera espacio por miedo.</p></div>
+    </div>
+    <p class="footer-note">Oportunidad: una herramienta moderna, rápida y comprensible para usuarios no técnicos.</p>
+  </section>
+
+  <!-- 3. Solución -->
+  <section class="slide">
+    <div class="kicker">La solución</div>
+    <h2>Escanear → Ver → Actuar</h2>
+    <p class="lead">DiskMap convierte el uso del disco en un mapa visual interactivo, accesible desde el navegador y sin enviar datos a la nube.</p>
+    <div style="margin-top:1.2rem">
+      <span class="pill">📊 Treemap interactivo</span>
+      <span class="pill">📋 Lista con barras de peso</span>
+      <span class="pill">🌐 Búsqueda global</span>
+      <span class="pill">🎛️ Filtros por categoría, tamaño y antigüedad</span>
+      <span class="pill green">🗑️ Papelera y eliminación segura</span>
+      <span class="pill amber">🔒 Carpetas sin permisos visibles</span>
+      <span class="pill">💻 100% local</span>
+    </div>
+    <div class="grid cards" style="margin-top:1.4rem">
+      <div class="card"><h3>Sin instalación pesada</h3><p>Se abre en Chrome, Edge o Firefox mediante un servidor local liviano.</p></div>
+      <div class="card"><h3>Sin Internet</h3><p>D3 está incluido localmente. Nada sale del computador.</p></div>
+      <div class="card"><h3>Con criterio de ingeniería</h3><p>Arquitectura por capas, patrones Observer/Strategy y métricas de calidad.</p></div>
+    </div>
+  </section>
+
+  <!-- 4. Historias de usuario -->
+  <section class="slide">
+    <div class="kicker">Requerimientos</div>
+    <h2>Las 5 historias de usuario están implementadas</h2>
+    <table>
+      <thead><tr><th>HU</th><th>Historia</th><th>Implementación</th></tr></thead>
+      <tbody>
+        <tr><td><b>HU1</b></td><td>Escanear unidad o carpeta</td><td>Lista de unidades, explorador, barra de progreso y cancelación</td></tr>
+        <tr><td><b>HU2</b></td><td>Visualización gráfica del espacio</td><td>Treemap D3: área proporcional, colores por tipo, tooltips y zoom</td></tr>
+        <tr><td><b>HU3</b></td><td>Gestión de archivos</td><td>Menú contextual: papelera, eliminar, abrir ubicación e información</td></tr>
+        <tr><td><b>HU4</b></td><td>Acceso por navegador web</td><td>Servidor en <code>127.0.0.1</code>, puerto automático, sin Internet</td></tr>
+        <tr><td><b>HU5</b></td><td>Filtrado y categorización</td><td>Categoría, tamaño y antigüedad; actualiza treemap y lista</td></tr>
+      </tbody>
+    </table>
+    <p class="footer-note">Trazabilidad: cada HU se conecta a un componente y a una prueba concreta.</p>
+  </section>
+
+  <!-- 5. Demo -->
+  <section class="slide">
+    <div class="kicker">Demostración</div>
+    <h2>Demo en vivo</h2>
+    <div class="grid two">
+      <div>
+        <div class="card">
+          <h3>Recorrido</h3>
+          <p>1. Seleccionar unidad o carpeta<br>
+             2. Iniciar escaneo y ver progreso<br>
+             3. Estadísticas generales<br>
+             4. Treemap: hover, colores y zoom<br>
+             5. Lista: orden, barras y paginación<br>
+             6. Búsqueda global y filtros<br>
+             7. Menú contextual en archivo de prueba<br>
+             8. Carpeta bloqueada y tema claro/oscuro</p>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Plan B</h3>
+          <p>• Escaneo precargado o carpeta mediana (<code>C:\Program Files</code>)<br>
+             • D3 es local: no depende de Internet<br>
+             • Si el WebSocket falla, el polling recupera el estado<br>
+             • Acciones destructivas solo en <code>C:\DiskMapDemo</code></p>
+        </div>
+        <div class="card" style="margin-top:1rem">
+          <h3>Mensaje</h3>
+          <p>La interfaz sigue respondiendo incluso mientras el servidor recorre cientos de miles de archivos.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Arquitectura -->
+  <section class="slide">
+    <div class="kicker">Arquitectura</div>
+    <h2>Cliente-servidor + tres capas</h2>
+    <div class="diagram" style="margin-bottom:1.2rem">
+      <div class="node"><strong>Usuario</strong><span>Navegador</span></div>
+      <div class="arrow">↔</div>
+      <div class="node"><strong>Cliente web</strong><span>HTML · CSS · JS · D3</span></div>
+      <div class="arrow">↔</div>
+      <div class="node"><strong>Servidor local</strong><span>Node.js · Express · ws</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>Disco</strong><span>HDD / SSD</span></div>
+    </div>
+    <div class="layers">
+      <div class="layer"><b>Presentación</b><span>Treemap, lista, filtros, modales, tema</span></div>
+      <div class="layer"><b>Lógica de aplicación</b><span>Escaneo, cálculo de tamaños, filtros, estado, operaciones</span></div>
+      <div class="layer"><b>Acceso al sistema de archivos</b><span><code>fs</code>, <code>path</code>, <code>child_process</code></span></div>
+    </div>
+    <p class="footer-note">Todo corre en la misma máquina: sin nube, sin base de datos externa, sin telemetría.</p>
+  </section>
+
+  <!-- 7. Patrones -->
+  <section class="slide">
+    <div class="kicker">Patrones de diseño</div>
+    <h2>Observer para el progreso. Strategy para los filtros.</h2>
+    <div class="grid two">
+      <div class="card">
+        <h3 class="accent">Observer</h3>
+        <p><b>Sujeto observable:</b> <code>ScanStateSubject</code></p>
+        <p><b>Observadores:</b> barra de progreso, contador de archivos, resumen, estado del escaneo.</p>
+        <p><b>Medio:</b> WebSocket envía eventos <code>status</code>, <code>progress</code>, <code>complete</code>, <code>error</code>.</p>
+        <p class="dim">Agregar un panel nuevo no obliga a tocar el escáner.</p>
+      </div>
+      <div class="card">
+        <h3 class="green">Strategy</h3>
+        <p><b>Contexto:</b> <code>FilterManager</code></p>
+        <p><b>Estrategias:</b> <code>CategoryFilter</code>, <code>SizeFilter</code>, <code>AgeFilter</code>, <code>ExtensionFilter</code>.</p>
+        <p><b>Contrato común:</b> <code>matches(file)</code>.</p>
+        <p class="dim">Agregar un filtro nuevo no obliga a tocar el gestor.</p>
+      </div>
+    </div>
+    <p class="footer-note">Ambos patrones reducen acoplamiento y mejoran la mantenibilidad (ISO/IEC 25010).</p>
+  </section>
+
+  <!-- 8. Cómo funciona -->
+  <section class="slide">
+    <div class="kicker">Funcionamiento</div>
+    <h2>Del clic al mapa visual</h2>
+    <div class="diagram" style="margin-bottom:1rem">
+      <div class="node"><strong>1. Solicitud</strong><span>POST /api/scan/start</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>2. Recorrido</strong><span>readdir + stat recursivo</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>3. Tamaños</strong><span>Cálculo bottom-up</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>4. Resumen</strong><span>WebSocket: complete</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>5. Vistas</strong><span>tree · children · search</span></div>
+    </div>
+    <div class="grid cards">
+      <div class="card"><h3>🔒 Sin permisos</h3><p>Se muestran con candado y motivo. No se fuerza elevación.</p></div>
+      <div class="card"><h3>📁 0 bytes</h3><p>Archivos y carpetas vacías se conservan en el análisis.</p></div>
+      <div class="card"><h3>🔗 Symlinks</h3><p>Se omiten para evitar bucles y resultados inconsistentes.</p></div>
+      <div class="card"><h3>✅ Consistencia</h3><p><code>_stats.verified</code> compara el árbol con el contador real.</p></div>
+    </div>
+  </section>
+
+  <!-- 9. 164 MB -> 620 bytes -->
+  <section class="slide">
+    <div class="kicker">Hallazgo de ingeniería</div>
+    <h2>El problema de los 164 MB</h2>
+    <div class="metric-row">
+      <div class="metric"><div class="value red">163,9 MB</div><div class="label">ANTES: respuesta de estado en C:\</div></div>
+      <div class="metric"><div class="value green">620 B</div><div class="label">DESPUÉS: respuesta de estado</div></div>
+      <div class="metric"><div class="value amber">~93 s</div><div class="label">ANTES: solo serializar</div></div>
+      <div class="metric"><div class="value accent">0 s</div><div class="label">DESPUÉS: instantáneo</div></div>
+    </div>
+    <p class="lead" style="margin-top:1.2rem">Enviar el árbol completo de 450.022 archivos congelaba el navegador. La solución fue mantener el árbol en el servidor y pedir solo lo necesario.</p>
+    <table style="margin-top:.8rem">
+      <thead><tr><th>Endpoint</th><th>Función</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/tree</code></td><td>Subárbol limitado para el treemap (34 KB en la raíz)</td></tr>
+        <tr><td><code>GET /api/children</code></td><td>Hijos directos para la lista (69 KB en C:\)</td></tr>
+        <tr><td><code>GET /api/search</code></td><td>Búsqueda global paginada (264 resultados en ~620 ms)</td></tr>
+        <tr><td><code>GET /api/scan/status</code></td><td>Estado ligero, sin árbol</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 10. ISO 25010 -->
+  <section class="slide">
+    <div class="kicker">ISO/IEC 25010</div>
+    <h2>Calidad del producto, con evidencia</h2>
+    <div class="grid cards" style="grid-template-columns:repeat(4,1fr); gap:.7rem">
+      <div class="card"><h3>Adecuación funcional</h3><p>HU1–HU5 implementadas y trazadas.</p></div>
+      <div class="card"><h3>Eficiencia</h3><p>Escaneo asíncrono, carga bajo demanda, top-N y paginación.</p></div>
+      <div class="card"><h3>Compatibilidad</h3><p>Chrome, Edge y Firefox. D3 local, sin Internet.</p></div>
+      <div class="card"><h3>Usabilidad</h3><p>UI en español, colores, tooltips, breadcrumbs y búsqueda.</p></div>
+      <div class="card"><h3>Fiabilidad</h3><p><code>verified</code>, reintento de stat, cancelación y fallback de polling.</p></div>
+      <div class="card"><h3>Seguridad</h3><p>Privilegio mínimo, confirmación y papelera primero.</p></div>
+      <div class="card"><h3>Mantenibilidad</h3><p>Capas, módulos pequeños y patrones Observer/Strategy.</p></div>
+      <div class="card"><h3>Portabilidad</h3><p>Node.js 18+ y navegador. Sin instalador pesado.</p></div>
+    </div>
+    <p class="footer-note">Modelo de 8 características de ISO/IEC 25010:2011. La revisión 2023 renombra algunas y agrega otras.</p>
+  </section>
+
+  <!-- 11. ISO 12207 -->
+  <section class="slide">
+    <div class="kicker">ISO/IEC/IEEE 12207</div>
+    <h2>Ciclo de vida y trazabilidad</h2>
+    <div class="diagram" style="margin-bottom:1rem">
+      <div class="node"><strong>Requerimientos</strong><span>HU1–HU5</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>Diseño</strong><span>4+1 · capas · patrones</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>Implementación</strong><span>4 sprints</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>Verificación</strong><span>Pruebas y métricas</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>Operación</strong><span>npm start</span></div>
+      <div class="arrow">→</div>
+      <div class="node"><strong>Mantenimiento</strong><span>Módulos desacoplados</span></div>
+    </div>
+    <table>
+      <thead><tr><th>HU</th><th>Componente</th><th>Prueba</th></tr></thead>
+      <tbody>
+        <tr><td>HU1</td><td><code>scanner.js</code> · <code>/api/scan/start</code></td><td>Escaneo de carpeta y disco completo</td></tr>
+        <tr><td>HU2</td><td><code>treemap.js</code> · <code>/api/tree</code></td><td>Zoom, tooltips y colores</td></tr>
+        <tr><td>HU3</td><td><code>fileOperations.js</code> · menú contextual</td><td>Papelera y eliminación con confirmación</td></tr>
+        <tr><td>HU4</td><td><code>server.js</code> · <code>public/</code></td><td>Navegador en localhost, sin Internet</td></tr>
+        <tr><td>HU5</td><td><code>filters.js</code> · <code>app.js</code></td><td>Filtros de categoría, tamaño y antigüedad</td></tr>
+      </tbody>
+    </table>
+    <p class="footer-note">Scrum: 4 sprints de 2 semanas. Cada incremento deja una funcionalidad verificable.</p>
+  </section>
+
+  <!-- 12. Base de datos: decisión -->
+  <section class="slide">
+    <div class="kicker">Base de datos</div>
+    <h2>La decisión actual: estructuras en memoria</h2>
+    <p class="lead">DiskMap no usa un DBMS en esta versión porque el análisis es efímero y la fuente de verdad es el sistema de archivos.</p>
+    <div class="grid two" style="margin-top:1rem">
+      <div>
+        <div class="card">
+          <h3>¿Por qué?</h3>
+          <p>• Cada escaneo reemplaza al anterior<br>
+             • Una copia en SQL se desactualiza respecto al disco<br>
+             • Evita I/O extra y latencia durante el escaneo<br>
+             • Cero configuración: <code>npm start</code> y listo<br>
+             • Cumple HU4: todo local, sin servicios externos</p>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>¿Qué usa en su lugar?</h3>
+          <pre>{
+  name: "Windows",
+  path: "C:\\Windows",
+  size: 25000000000,
+  type: "directory",
+  category: "directory",
+  children: [ ... ],
+  locked: false
+}
+
+// Índice para búsquedas O(1)
+Map&lt;path, node&gt;</pre>
+        </div>
+      </div>
+    </div>
+    <p class="footer-note">Limitación asumida: al cerrar el servidor se pierde el resultado. No hay historial ni auditoría persistente.</p>
+  </section>
+
+  <!-- 13. Base de datos: modelo propuesto -->
+  <section class="slide">
+    <div class="kicker">Base de datos · siguiente versión</div>
+    <h2>Modelo propuesto: historial y auditoría con SQLite</h2>
+    <div class="grid" style="grid-template-columns:repeat(4,1fr); gap:.7rem">
+      <div class="card">
+        <h3 class="accent">SCANS</h3>
+        <p><code>id</code>, <code>root_path</code>, <code>started_at</code>, <code>finished_at</code>, <code>status</code>, <code>total_files</code>, <code>total_size</code>, <code>skipped_dirs</code>, <code>verified</code></p>
+      </div>
+      <div class="card">
+        <h3 class="green">NODES</h3>
+        <p><code>id</code>, <code>scan_id</code>, <code>parent_id</code>, <code>name</code>, <code>path</code>, <code>type</code>, <code>size</code>, <code>category</code>, <code>modified_at</code>, <code>locked</code>, <code>depth</code></p>
+      </div>
+      <div class="card">
+        <h3 class="amber">FILE_ACTIONS</h3>
+        <p><code>id</code>, <code>scan_id</code>, <code>node_id</code>, <code>action</code>, <code>performed_at</code>, <code>success</code>, <code>message</code></p>
+      </div>
+      <div class="card">
+        <h3>SETTINGS</h3>
+        <p><code>key</code>, <code>value</code></p>
+        <p class="dim">Tema, última ruta, preferencias.</p>
+      </div>
+    </div>
+    <pre style="margin-top:.8rem">SCANS 1 ─── N NODES        NODES 1 ─── N NODES (parent_id)
+SCANS 1 ─── N FILE_ACTIONS  NODES 1 ─── N FILE_ACTIONS
+
+-- Índices clave
+CREATE INDEX idx_nodes_scan_parent ON nodes(scan_id, parent_id);
+CREATE INDEX idx_nodes_scan_size   ON nodes(scan_id, size DESC);
+CREATE INDEX idx_nodes_scan_path   ON nodes(scan_id, path);</pre>
+    <p class="footer-note">SQLite: local, embebido, ACID y sin servidor. PostgreSQL solo si se necesita multiusuario.</p>
+  </section>
+
+  <!-- 14. Seguridad -->
+  <section class="slide">
+    <div class="kicker">Seguridad y ética</div>
+    <h2>Privilegio mínimo, confirmación y datos locales</h2>
+    <div class="grid cards">
+      <div class="card"><h3>🔒 Privilegio mínimo</h3><p>No se fuerza elevación. Las carpetas sin permiso se muestran con candado y motivo.</p></div>
+      <div class="card"><h3>⚠️ Confirmación</h3><p>Toda acción destructiva pide confirmación explícita antes de ejecutarse.</p></div>
+      <div class="card"><h3>🗑️ Papelera primero</h3><p>“Mover a papelera” es la opción principal; eliminar es secundaria y advertida.</p></div>
+      <div class="card"><h3>💻 Todo local</h3><p>Sin telemetría ni envío de rutas o metadatos a Internet.</p></div>
+      <div class="card"><h3>📜 Cumplimiento</h3><p>Diseño alineado con Ley N° 19.628 (Chile) y RGPD/GDPR.</p></div>
+      <div class="card"><h3>👁️ Transparencia</h3><p>La UI explica por qué una carpeta no se puede leer.</p></div>
+    </div>
+    <p class="footer-note">La seguridad no es solo “no borrar”: es operar con los permisos que el usuario ya tiene y no ocultar limitaciones.</p>
+  </section>
+
+  <!-- 15. Métricas -->
+  <section class="slide">
+    <div class="kicker">Pruebas</div>
+    <h2>Evidencia con discos reales</h2>
+    <table>
+      <thead><tr><th>Prueba</th><th>Resultado</th></tr></thead>
+      <tbody>
+        <tr><td>Escaneo completo de <code>C:\</code></td><td>450.022 archivos · 120.508 carpetas · 158,95 GB · 195 sin acceso</td></tr>
+        <tr><td>Consistencia (3 escaneos seguidos)</td><td>Mismo conteo · <code>verified: true</code></td></tr>
+        <tr><td>Estado del escaneo</td><td><b class="green">620 bytes</b> (antes 163,9 MB)</td></tr>
+        <tr><td>Treemap de la raíz</td><td>34 KB · 238 celdas · 20 grupos</td></tr>
+        <tr><td>Lista de hijos de <code>C:\</code></td><td>69 KB · 20 elementos</td></tr>
+        <tr><td>Búsqueda global “pakchunk”</td><td>264 resultados en ~620 ms</td></tr>
+        <tr><td>Zoom en <code>Windows</code></td><td>~358 ms</td></tr>
+        <tr><td>Fallback sin WebSocket</td><td>Escaneo completado y UI actualizada por polling</td></tr>
+        <tr><td>Papelera y eliminación</td><td>Probadas con archivo y carpeta de prueba</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 16. Brand Book -->
+  <section class="slide">
+    <div class="kicker">Brand Book</div>
+    <h2>Una identidad precisa, visual y segura</h2>
+    <div class="grid two">
+      <div>
+        <div class="card">
+          <h3>Nombre y eslogan</h3>
+          <p><b>DiskMap</b><br>“Ve tu disco. Libera tu espacio.”</p>
+          <h3 style="margin-top:1rem">Personalidad</h3>
+          <p>Preciso · visual · seguro · local-first · accesible</p>
+          <h3 style="margin-top:1rem">Tipografía</h3>
+          <p>Segoe UI / system-ui: nativa, rápida y legible.</p>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3>Paleta</h3>
+          <div class="swatches">
+            <div><div class="swatch" style="background:#3b82f6"></div><small>#3b82f6</small></div>
+            <div><div class="swatch" style="background:#22c55e"></div><small>#22c55e</small></div>
+            <div><div class="swatch" style="background:#f59e0b"></div><small>#f59e0b</small></div>
+            <div><div class="swatch" style="background:#ef4444"></div><small>#ef4444</small></div>
+            <div><div class="swatch" style="background:#0f172a"></div><small>#0f172a</small></div>
+            <div><div class="swatch" style="background:#e2e8f0"></div><small>#e2e8f0</small></div>
+          </div>
+          <p style="margin-top:1.4rem">Los colores comunican peso: verde → ámbar → rojo. El fondo oscuro hace resaltar los datos.</p>
+        </div>
+      </div>
+    </div>
+    <p class="footer-note">Aplicaciones: interfaz, README, presentación e ícono del producto.</p>
+  </section>
+
+  <!-- 17. Cierre -->
+  <section class="slide">
+    <div class="kicker">Cierre</div>
+    <h2>Lo logrado, lo que falta y lo que sigue</h2>
+    <div class="grid three">
+      <div class="card">
+        <h3 class="green">Lo logrado</h3>
+        <p>Producto funcional, visual y seguro. Escaneo de discos completos, treemap, lista, búsqueda, filtros y gestión de archivos.</p>
+      </div>
+      <div class="card">
+        <h3 class="amber">Limitaciones</h3>
+        <p>Sin historial persistente, sin detección de duplicados y escaneo secuencial. La base de datos queda para la siguiente versión.</p>
+      </div>
+      <div class="card">
+        <h3 class="accent">Trabajo futuro</h3>
+        <p>SQLite para historial, worker threads, detección de duplicados por hash, instalador de un clic y pruebas automatizadas.</p>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:1.6rem"><strong>DiskMap no solo muestra el disco: ayuda a decidir qué hacer con él.</strong></p>
+    <p class="dim">Gracias. ¿Preguntas?</p>
+  </section>
+
+</div>
+
+<div class="counter" id="counter">1 / 17</div>
+<div class="hint">← → para navegar · F11 pantalla completa</div>
+<div class="nav">
+  <button id="prev" title="Anterior">◀</button>
+  <button id="next" title="Siguiente">▶</button>
+</div>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const progress = document.getElementById('progress');
+  const counter = document.getElementById('counter');
+  let index = 0;
+
+  function show(n) {
+    index = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((s, i) => s.classList.toggle('active', i === index));
+    progress.style.width = ((index + 1) / slides.length * 100) + '%';
+    counter.textContent = (index + 1) + ' / ' + slides.length;
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(e.key)) {
+      e.preventDefault(); show(index + 1);
+    } else if (['ArrowLeft', 'ArrowUp', 'PageUp'].includes(e.key)) {
+      e.preventDefault(); show(index - 1);
+    } else if (e.key === 'Home') {
+      e.preventDefault(); show(0);
+    } else if (e.key === 'End') {
+      e.preventDefault(); show(slides.length - 1);
+    }
+  });
+
+  document.getElementById('prev').addEventListener('click', () => show(index - 1));
+  document.getElementById('next').addEventListener('click', () => show(index + 1));
+
+  show(0);
+</script>
+</body>
+</html>

@@ -663,6 +663,39 @@ body {
   color: var(--text-secondary);
 }
 
+.breadcrumb-up,
+.breadcrumb-back {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.breadcrumb-up:hover:not(:disabled),
+.breadcrumb-back:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.breadcrumb-up:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.breadcrumb-current {
+  color: var(--text-primary);
+  padding: 2px 6px;
+}
+
+.empty-state.with-header {
+  height: auto;
+  min-height: 50vh;
+}
+
 .list-footer {
   display: flex;
   gap: 16px;

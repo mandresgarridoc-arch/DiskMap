@@ -196,31 +196,20 @@ class ListView {
     const endIdx = this.pageSize > 0 ? startIdx + this.pageSize : filtered.length;
     const pageItems = filtered.slice(startIdx, endIdx);
 
+    // El breadcrumb se construye siempre, incluso si la carpeta está vacía.
+    const headerHtml = this._buildHeaderHtml(isGlobal, filtered.length);
+
     if (pageItems.length === 0) {
       const msg = isGlobal
         ? 'No se encontraron coincidencias'
         : (sourceItems.length === 0 ? 'Esta carpeta está vacía' : 'Ningún elemento coincide con el filtro');
-      this.container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">📋</div><h3>Sin resultados</h3><p>${msg}</p></div>`;
+      const backButton = (!isGlobal && this.navStack.length > 0)
+        ? `<button class="btn btn-secondary" data-action="up" style="margin-top:16px;">⬆ Volver a la carpeta anterior</button>`
+        : '';
+      this.container.innerHTML = `${headerHtml}<div class="empty-state with-header"><div class="empty-state-icon">📋</div><h3>Sin resultados</h3><p>${msg}</p>${backButton}</div>`;
+      this._bindHeaderNavigation(isGlobal);
       this._renderPagination(0);
       return;
-    }
-
-    // Breadcrumb or global search header
-    let headerHtml = '';
-    if (isGlobal) {
-      headerHtml = `<div class="breadcrumb"><span style="color:var(--accent);">🌐 Resultados de búsqueda global: "${escapeHtml(this.globalSearchQuery)}"</span> <span style="color:var(--text-secondary); margin-left:8px;">(${filtered.length}${this.globalLimited ? '+' : ''} resultados)</span></div>`;
-    } else {
-      headerHtml = '<div class="breadcrumb">';
-      headerHtml += `<span class="breadcrumb-item" data-level="root">🏠 Raíz</span>`;
-      this.navStack.forEach((entry, idx) => {
-        headerHtml += `<span class="breadcrumb-sep">›</span>`;
-        headerHtml += `<span class="breadcrumb-item" data-level="${idx}">${escapeHtml(entry.name)}</span>`;
-      });
-      if (this.currentNode) {
-        headerHtml += `<span class="breadcrumb-sep">›</span>`;
-        headerHtml += `<span style="color:var(--text-primary);">${escapeHtml(this.currentNode.name)}</span>`;
-      }
-      headerHtml += '</div>';
     }
 
     let html = headerHtml;
@@ -331,25 +320,72 @@ class ListView {
       header.style.cursor = 'pointer';
     });
 
-    // Breadcrumb navigation
-    if (!isGlobal) {
-      this.container.querySelectorAll('.breadcrumb-item').forEach(item => {
-        item.addEventListener('click', () => {
-          const level = item.dataset.level;
-          if (level === 'root') {
-            if (this.rootSummary) this.navigate(this.rootSummary.path, []);
-          } else {
-            const idx = parseInt(level, 10);
-            const target = this.navStack[idx];
-            if (target) {
-              this.navigate(target.path, this.navStack.slice(0, idx));
-            }
-          }
-        });
-      });
-    }
+    // Breadcrumb navigation (incluye botón Subir y salida de búsqueda global)
+    this._bindHeaderNavigation(isGlobal);
 
     this._renderPagination(totalPages, totalItems);
+  }
+
+  _buildHeaderHtml(isGlobal, resultCount) {
+    if (isGlobal) {
+      const count = typeof resultCount === 'number' ? resultCount : 0;
+      return `<div class="breadcrumb">
+        <button class="breadcrumb-back" data-action="exit-search" title="Volver a la carpeta">✕ Volver a la carpeta</button>
+        <span style="color:var(--accent);">🌐 Resultados de búsqueda global: "${escapeHtml(this.globalSearchQuery)}"</span>
+        <span style="color:var(--text-secondary); margin-left:8px;">(${count}${this.globalLimited ? '+' : ''} resultados)</span>
+      </div>`;
+    }
+
+    const canGoUp = this.navStack.length > 0;
+    let html = '<div class="breadcrumb">';
+    html += `<button class="breadcrumb-up" data-action="up" ${canGoUp ? '' : 'disabled'} title="${canGoUp ? 'Subir a la carpeta anterior' : 'Ya estás en la raíz del escaneo'}">⬆ Subir</button>`;
+    html += `<span class="breadcrumb-item" data-level="root">🏠 Raíz</span>`;
+    this.navStack.forEach((entry, idx) => {
+      html += `<span class="breadcrumb-sep">›</span>`;
+      html += `<span class="breadcrumb-item" data-level="${idx}">${escapeHtml(entry.name)}</span>`;
+    });
+    if (this.currentNode) {
+      html += `<span class="breadcrumb-sep">›</span>`;
+      html += `<span class="breadcrumb-current">${escapeHtml(this.currentNode.name)}</span>`;
+    }
+    html += '</div>';
+    return html;
+  }
+
+  _bindHeaderNavigation(isGlobal) {
+    this.container.querySelectorAll('[data-action="up"]').forEach(btn => {
+      btn.addEventListener('click', () => this.goUp());
+    });
+
+    const exit = this.container.querySelector('[data-action="exit-search"]');
+    if (exit) exit.addEventListener('click', () => this.setGlobalSearch(''));
+
+    if (isGlobal) return;
+
+    this.container.querySelectorAll('.breadcrumb-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const level = item.dataset.level;
+        if (level === 'root') {
+          if (this.rootSummary) this.navigate(this.rootSummary.path, []);
+        } else {
+          const idx = parseInt(level, 10);
+          const target = this.navStack[idx];
+          if (target) {
+            this.navigate(target.path, this.navStack.slice(0, idx));
+          }
+        }
+      });
+    });
+  }
+
+  goUp() {
+    if (!this.currentNode) return;
+    if (this.navStack.length > 0) {
+      const parent = this.navStack[this.navStack.length - 1];
+      this.navigate(parent.path, this.navStack.slice(0, -1));
+    } else if (this.rootSummary && this.currentNode.path !== this.rootSummary.path) {
+      this.navigate(this.rootSummary.path, []);
+    }
   }
 
   _renderPagination(totalPages, totalItems) {
